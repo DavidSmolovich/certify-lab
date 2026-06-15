@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Certify Insurance — My Policies</title>
+<style>
+  :root{
+    --brand:#0E7C7B; --brand-d:#0a5f5e;
+    --ink:#0f172a; --muted:#64748b; --bg:#f1f5f9; --card:#ffffff; --line:#e2e8f0;
+    --red:#dc2626; --red-bg:#fef2f2; --green:#16a34a; --green-bg:#f0fdf4;
+    --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+  .hidden{display:none !important}
+
+  /* ── Security lab control bar ─────────────────────────────── */
+  .lab{background:#0E1116;color:#e6edf3;border-bottom:2px solid #B3261E}
+  .lab .row{max-width:1080px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .lab .tag{font:700 11px var(--mono);letter-spacing:.12em;color:#9aa7b4;text-transform:uppercase}
+  .lab .spacer{flex:1}
+  .lab label{font:600 12px var(--sans);color:#9aa7b4;margin-right:6px}
+  .seg{display:inline-flex;border:1px solid #2b333d;border-radius:10px;overflow:hidden}
+  .seg button{background:#161B22;color:#c4ccd4;border:0;padding:8px 14px;font:700 12px var(--sans);cursor:pointer}
+  .seg button.on.vuln{background:#B3261E;color:#fff}
+  .seg button.on.safe{background:#1B7F4B;color:#fff}
+  .lab select{background:#161B22;color:#e6edf3;border:1px solid #2b333d;border-radius:8px;padding:7px 10px;font:600 12px var(--sans)}
+
+  /* ── App chrome ───────────────────────────────────────────── */
+  .appbar{background:var(--card);border-bottom:1px solid var(--line)}
+  .appbar .row{max-width:1080px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:20px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--brand)}
+  .brand .mark{width:26px;height:26px;border-radius:7px;background:var(--brand);display:grid;place-items:center;color:#fff;font-size:15px}
+  nav{display:flex;gap:18px}
+  nav a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
+  nav a.active{color:var(--ink);border-bottom:2px solid var(--brand);padding-bottom:4px}
+  .user{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:14px;color:var(--muted)}
+  .avatar{width:30px;height:30px;border-radius:50%;background:#cbd5e1;color:#0f172a;display:grid;place-items:center;font-weight:700;font-size:13px}
+
+  main{max-width:1080px;margin:0 auto;padding:26px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 20px}
+
+  /* summary cards */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+  @media(max-width:680px){.cards{grid-template-columns:1fr}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .k{font-size:12px;color:var(--muted);font-weight:600}
+  .stat .v{font-size:22px;font-weight:800;margin-top:4px}
+
+  /* filter */
+  .filter{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
+  .filter .lead{font-weight:700;font-size:14px;margin-bottom:10px}
+  .filter .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .filter input{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:500 14px var(--mono)}
+  .filter input:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+  .btn{border:0;border-radius:9px;padding:10px 16px;font:700 13px var(--sans);cursor:pointer}
+  .btn.go{background:var(--brand);color:#fff}
+  .btn.go:hover{background:var(--brand-d)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font:600 12px var(--sans);cursor:pointer;color:var(--muted)}
+  .chip:hover{border-color:var(--brand);color:var(--brand)}
+  .chip.evil{border-color:var(--red);color:var(--red);background:var(--red-bg);font-family:var(--mono)}
+
+  /* banners */
+  .breach{background:var(--red-bg);border:1px solid #fecaca;border-left:5px solid var(--red);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#7f1d1d}
+  .breach b{color:var(--red)}
+  .safe-note{background:var(--green-bg);border:1px solid #bbf7d0;border-left:5px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#14532d}
+
+  /* request info */
+  .reqinfo{font:500 12.5px var(--mono);background:#0c1014;color:#c4ccd4;border-radius:10px;padding:12px 14px;margin-bottom:18px;overflow:auto}
+  .reqinfo .m{color:#7ee0b8}.reqinfo .v1{color:#F1685E;font-weight:700}.reqinfo .v2{color:#3FB984;font-weight:700}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+  th{background:#f8fafc;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:0}
+  tr.foreign td{background:var(--red-bg)}
+  tr.foreign td:first-child{box-shadow:inset 4px 0 0 var(--red)}
+  .who{display:flex;flex-direction:column}
+  .who .nm{font-weight:600}
+  .badge-foreign{display:inline-block;margin-left:8px;font:700 10px var(--sans);color:#fff;background:var(--red);border-radius:5px;padding:2px 6px;vertical-align:middle}
+  .pill{font:700 11px var(--sans);border-radius:999px;padding:3px 9px}
+  .pill.Active{background:#dcfce7;color:#166534}.pill.Lapsed{background:#fee2e2;color:#991b1b}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  footer{max-width:1080px;margin:0 auto;padding:20px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+
+  <!-- ── SECURITY LAB CONTROL BAR ─────────────────────────────── -->
+  <div class="lab"><div class="row">
+    <span class="tag">🔬 Secure SDLC Lab · HQL Injection</span>
+    <div class="spacer"></div>
+    <div>
+      <label>Endpoint</label>
+      <span class="seg" id="seg">
+        <button id="segV1" class="on vuln" data-mode="v1">❌ Vulnerable (v1)</button>
+        <button id="segV2" class="safe" data-mode="v2">✅ Secure (v2)</button>
+      </span>
+    </div>
+    <div>
+      <label>Logged in as</label>
+      <select id="customer">
+        <option value="1">#1 · Dana Cohen (you)</option>
+        <option value="2">#2 · Yossi Levi</option>
+        <option value="3">#3 · Maya Friedman</option>
+        <option value="4">#4 · Avi Stern (CEO)</option>
+      </select>
+    </div>
+  </div></div>
+
+  <!-- ── APP HEADER ───────────────────────────────────────────── -->
+  <header class="appbar"><div class="row">
+    <div class="brand"><span class="mark">◆</span> Certify<span style="color:var(--ink)">Insurance</span></div>
+    <nav>
+      <a href="#">Dashboard</a>
+      <a href="#" class="active">My Policies</a>
+      <a href="#">Claims</a>
+      <a href="#">Documents</a>
+    </nav>
+    <div class="user"><span id="userName">Dana Cohen</span><span class="avatar" id="userAv">DC</span></div>
+  </div></header>
+
+  <!-- ── MAIN ─────────────────────────────────────────────────── -->
+  <main>
+    <h1>My Policies</h1>
+    <p class="sub">View and filter the policies on your account.</p>
+
+    <div class="cards">
+      <div class="stat"><div class="k">Policies shown</div><div class="v" id="cShown">–</div></div>
+      <div class="stat"><div class="k">Total annual premium</div><div class="v" id="cPrem">–</div></div>
+      <div class="stat"><div class="k">Account holder</div><div class="v" id="cHolder" style="font-size:16px">–</div></div>
+    </div>
+
+    <div class="filter">
+      <div class="lead">Filter your policies by type</div>
+      <div class="controls">
+        <input id="type" value="Auto" placeholder="e.g. Auto, Home, Life, Health" />
+        <button class="btn go" id="search">Search</button>
+      </div>
+      <div class="chips">
+        <span class="chip" data-type="Auto">Auto</span>
+        <span class="chip" data-type="Home">Home</span>
+        <span class="chip" data-type="Life">Life</span>
+        <span class="chip" data-type="Health">Health</span>
+        <span class="chip evil" data-type="x' OR '1'='1">💉 inject: x' OR '1'='1</span>
+      </div>
+    </div>
+
+    <div id="breach" class="breach hidden"></div>
+    <div id="safeNote" class="safe-note hidden"></div>
+    <div id="reqinfo" class="reqinfo"></div>
+    <div id="results"></div>
+  </main>
+
+  <footer>© 2026 Certify Insurance Ltd. · Demo environment for the ToDo Security Solutions Secure SDLC workshop. Not a real insurer.</footer>
+
+<script>
+  const state = { mode: 'v1', customer: 1, type: 'Auto' };
+  const $ = s => document.querySelector(s);
+  const fmt = n => '₪' + Number(n).toLocaleString('en-US');
+
+  function setMode(mode){
+    state.mode = mode;
+    $('#segV1').classList.toggle('on', mode === 'v1');
+    $('#segV2').classList.toggle('on', mode === 'v2');
+    run();
+  }
+
+  document.querySelectorAll('#seg button').forEach(b =>
+    b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  $('#customer').addEventListener('change', e => {
+    state.customer = parseInt(e.target.value, 10);
+    const name = e.target.selectedOptions[0].text.split('·')[1].replace('(you)','').trim();
+    $('#userName').textContent = name;
+    $('#userAv').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    run();
+  });
+
+  $('#search').addEventListener('click', () => { state.type = $('#type').value; run(); });
+  $('#type').addEventListener('keydown', e => { if (e.key === 'Enter'){ state.type = $('#type').value; run(); } });
+  document.querySelectorAll('.chip').forEach(c =>
+    c.addEventListener('click', () => { state.type = c.dataset.type; $('#type').value = c.dataset.type; run(); }));
+
+  async function run(){
+    const params = new URLSearchParams({ type: state.type });
+    const url = `/api/${state.mode}/policies?${params}`;
+    let data;
+    try{
+      const res = await fetch(url, { headers: { 'X-Customer-Id': String(state.customer) } });
+      data = await res.json();
+    }catch(err){
+      $('#results').innerHTML = `<div class="empty">Request failed: ${err}</div>`;
+      return;
+    }
+    render(url, data);
+  }
+
+  function render(url, data){
+    const me = data.loggedInCustomerId;
+    const rows = data.policies || [];
+    const foreign = rows.filter(p => p.customerId !== me);
+    const modeClass = state.mode === 'v1' ? 'v1' : 'v2';
+
+    // request/response line (educational)
+    $('#reqinfo').innerHTML =
+      `<span class="m">GET</span> <span class="${modeClass}">${url}</span>` +
+      `  ·  X-Customer-Id: ${me}<br>` +
+      `<span class="m">↳</span> ${data.endpoint} — returned ${data.returned}, ` +
+      `leakedOtherCustomers: <b>${data.leakedOtherCustomers}</b>`;
+
+    // banners
+    const breach = $('#breach'), safe = $('#safeNote');
+    breach.classList.add('hidden'); safe.classList.add('hidden');
+    if (data.leakedOtherCustomers){
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>DATA BREACH</b> — this response exposed <b>${foreign.length}</b> ` +
+        `policies belonging to other customers. A logged-in customer just read the entire book of business.`;
+    } else if (/['"]|OR|UNION|--/i.test(state.type)){
+      safe.classList.remove('hidden');
+      safe.textContent = state.mode === 'v2'
+        ? '✅ Injection neutralized — the parameterized endpoint treated your input as literal data, returning only matching rows.'
+        : '✅ No cross-customer data in this response.';
+    }
+
+    // summary
+    $('#cShown').textContent = data.returned;
+    $('#cPrem').textContent = fmt(rows.reduce((s,p)=>s + (p.premium||0), 0));
+    $('#cHolder').textContent = '#' + me;
+
+    // table
+    if (!rows.length){
+      $('#results').innerHTML = `<div class="empty">No policies match “${escapeHtml(state.type)}”.</div>`;
+      return;
+    }
+    const body = rows.map(p => {
+      const isForeign = p.customerId !== me;
+      return `<tr class="${isForeign ? 'foreign' : ''}">
+        <td><code>${escapeHtml(p.policyNumber)}</code></td>
+        <td>${escapeHtml(p.type)}</td>
+        <td>${fmt(p.premium)}</td>
+        <td><span class="pill ${p.status}">${escapeHtml(p.status)}</span></td>
+        <td><div class="who"><span class="nm">${escapeHtml(p.customerName)} <span class="muted">(#${p.customerId})</span>${isForeign ? '<span class="badge-foreign">NOT YOUR POLICY</span>' : ''}</span></div></td>
+      </tr>`;
+    }).join('');
+    $('#results').innerHTML =
+      `<table><thead><tr><th>Policy #</th><th>Type</th><th>Premium</th><th>Status</th><th>Policyholder</th></tr></thead>` +
+      `<tbody>${body}</tbody></table>`;
+  }
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  run(); // initial load
+</script>
+</body>
+</html>

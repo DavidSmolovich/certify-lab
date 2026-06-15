@@ -1,0 +1,8 @@
+services:
+  certify-lab:
+    build: .
+    image: certify-lab
+    container_name: certify-lab
+    ports:
+      - "8088:8080"   # host 8088 (8080 is taken by whatsapp_bridge) -> container 8080
+    # The lab DB lives inside the container and is reseeded on every start.
