@@ -88,6 +88,11 @@
   .pill.Paid{background:#e0e7ff;color:#3730a3}
   .actions{display:flex;gap:6px;flex-wrap:wrap}
   .empty{padding:30px;text-align:center;color:var(--muted)}
+  textarea{width:100%;min-height:120px;padding:12px;border:1px solid var(--line);border-radius:10px;font:500 12.5px var(--mono);resize:vertical;color:var(--ink)}
+  textarea:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+  .chip.cmd{font-family:var(--mono)}
+  .outbox{background:#0c1014;color:#c4ccd4;border-radius:10px;padding:14px;font:500 13px var(--mono);white-space:pre-wrap;overflow:auto}
+  .rce-title{font-weight:800}
   footer{max-width:1080px;margin:0 auto;padding:20px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 </style>
 </head>
@@ -122,7 +127,7 @@
       <a>Dashboard</a>
       <a id="navPolicies" class="active">My Policies</a>
       <a id="navClaims">Claims</a>
-      <a>Documents</a>
+      <a id="navImport">Quote Import</a>
     </nav>
     <div class="user"><span id="userName">Dana Cohen</span><span class="avatar" id="userAv">DC</span></div>
   </div></header>
@@ -172,6 +177,42 @@
       <div id="claimReq" class="reqinfo"></div>
       <div id="claimsResults"></div>
     </section>
+
+    <!-- ───────── QUOTE IMPORT TAB (insecure deserialization -> RCE) ───────── -->
+    <section id="tab-import" class="hidden">
+      <h1>Import a saved quote</h1>
+      <p class="sub">Restore a previously exported application draft. The importer hits the
+        <b id="importModeLabel" style="color:var(--red)">vulnerable</b> endpoint (set by the toggle above).</p>
+
+      <div class="filter">
+        <div class="lead">Command to run on the server (used by the RCE payload)</div>
+        <div class="controls">
+          <input id="cmd" value="id" placeholder="id" />
+          <button class="btn race" id="loadRce">💣 Build RCE payload</button>
+          <button class="btn ghost" id="loadLegit">Legit draft</button>
+        </div>
+        <div class="chips">
+          <span class="chip cmd" data-cmd="id">id</span>
+          <span class="chip cmd" data-cmd="whoami">whoami</span>
+          <span class="chip cmd" data-cmd="uname -a">uname -a</span>
+          <span class="chip cmd" data-cmd="cat /etc/passwd">cat /etc/passwd</span>
+          <span class="chip cmd" data-cmd="ls -la /app">ls -la /app</span>
+        </div>
+      </div>
+
+      <div class="filter">
+        <div class="lead">Draft payload (JSON) — sent as-is to the importer</div>
+        <textarea id="payload" spellcheck="false"></textarea>
+        <div class="controls" style="margin-top:10px">
+          <button class="btn go" id="importBtn">Import draft</button>
+        </div>
+      </div>
+
+      <div id="rceBanner" class="breach hidden"></div>
+      <div id="importSafe" class="safe-note hidden"></div>
+      <div id="importReq" class="reqinfo"></div>
+      <div id="importOut"></div>
+    </section>
   </main>
 
   <footer>© 2026 Certify Insurance Ltd. · Demo environment for the ToDo Security Solutions Secure SDLC workshop. Not a real insurer.</footer>
@@ -188,6 +229,8 @@
     document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
     $('#claimModeLabel').textContent = mode === 'v1' ? 'vulnerable' : 'secure';
     $('#claimModeLabel').style.color = mode === 'v1' ? 'var(--red)' : 'var(--green)';
+    const il = $('#importModeLabel');
+    if (il){ il.textContent = mode === 'v1' ? 'vulnerable' : 'secure'; il.style.color = mode === 'v1' ? 'var(--red)' : 'var(--green)'; }
     refreshActive();
   }
   document.querySelectorAll('#seg button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -202,15 +245,20 @@
 
   function showTab(tab){
     state.tab = tab;
-    $('#tab-policies').classList.toggle('hidden', tab !== 'policies');
-    $('#tab-claims').classList.toggle('hidden', tab !== 'claims');
+    ['policies','claims','import'].forEach(t => $('#tab-'+t).classList.toggle('hidden', t !== tab));
     $('#navPolicies').classList.toggle('active', tab === 'policies');
     $('#navClaims').classList.toggle('active', tab === 'claims');
+    $('#navImport').classList.toggle('active', tab === 'import');
     refreshActive();
   }
   $('#navPolicies').addEventListener('click', () => showTab('policies'));
   $('#navClaims').addEventListener('click', () => showTab('claims'));
-  function refreshActive(){ state.tab === 'claims' ? loadClaims() : runPolicies(); }
+  $('#navImport').addEventListener('click', () => showTab('import'));
+  function refreshActive(){
+    if (state.tab === 'claims') loadClaims();
+    else if (state.tab === 'import') updatePayloadPreview();
+    else runPolicies();
+  }
 
   // ── POLICIES (HQL injection) ─────────────────────────────
   $('#search').addEventListener('click', () => { state.type = $('#type').value; runPolicies(); });
@@ -314,6 +362,44 @@
     if (b.dataset.act === 'race')  payout(id, 5);
     if (b.dataset.act === 'reset') resetClaim(id);
   });
+
+  // ── QUOTE IMPORT (insecure deserialization -> RCE) ───────
+  const GADGET_TYPE = 'CertifyLab.Domain.ReportTask, CertifyLab';
+  const buildRce = () => JSON.stringify({ '$type': GADGET_TYPE, 'Run': ($('#cmd').value || 'id') }, null, 2);
+  const buildLegit = () => JSON.stringify({ applicantName:'Dana Cohen', product:'Auto', coverageAmount:30000, notes:'Renewal quote' }, null, 2);
+  function updatePayloadPreview(){ if (!$('#payload').value.trim()) $('#payload').value = buildRce(); }
+
+  $('#loadRce').addEventListener('click', () => $('#payload').value = buildRce());
+  $('#loadLegit').addEventListener('click', () => $('#payload').value = buildLegit());
+  document.querySelectorAll('.chip.cmd').forEach(c =>
+    c.addEventListener('click', () => { $('#cmd').value = c.dataset.cmd; $('#payload').value = buildRce(); }));
+  $('#importBtn').addEventListener('click', importDraft);
+
+  async function importDraft(){
+    const url = `/api/${state.mode}/quotes/import`;
+    const mc = state.mode === 'v1' ? 'v1' : 'v2';
+    let data;
+    try { data = await (await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: $('#payload').value })).json(); }
+    catch(err){ $('#importOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+
+    const rce = $('#rceBanner'), safe = $('#importSafe');
+    rce.classList.add('hidden'); safe.classList.add('hidden');
+    $('#importReq').innerHTML =
+      `<span class="m">POST</span> <span class="${mc}">${escapeHtml(url)}</span><br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint || '')} — deserialized type: <b>${escapeHtml(data.deserializedType || 'n/a')}</b>`;
+
+    if (data.commandOutput){
+      rce.classList.remove('hidden');
+      rce.innerHTML = `🚨 <span class="rce-title">REMOTE CODE EXECUTION</span> — the server built your chosen type and ran <code>${escapeHtml($('#cmd').value)}</code> on the host:`;
+      $('#importOut').innerHTML = `<div class="outbox">${escapeHtml(data.commandOutput)}</div>`;
+    } else {
+      safe.classList.remove('hidden');
+      safe.textContent = state.mode === 'v2'
+        ? '✅ Secure — System.Text.Json parsed the JSON as a plain QuoteDraft; the gadget type was never instantiated, nothing executed.'
+        : 'No command output — load the 💣 RCE payload and run it on the Vulnerable (v1) endpoint to see code execution.';
+      $('#importOut').innerHTML = data.draft ? `<div class="outbox">${escapeHtml(typeof data.draft === 'string' ? data.draft : JSON.stringify(data.draft, null, 2))}</div>` : '';
+    }
+  }
 
   // initial load
   runPolicies();

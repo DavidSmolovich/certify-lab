@@ -3,10 +3,11 @@
 > **Secure SDLC · Session 4 — Backend Logic & Data Integrity**
 > A hands-on companion to the slides. Unlike the Juice Shop demos (Node.js), this lab is **C# .NET Core + NHibernate** — *your* stack. The bugs, and the fixes, are in your own language.
 
-Two real backend flaws in the **Certify Insurance** portal, each with a ❌ vulnerable and ✅ secure endpoint you flip with a toggle:
+Three real backend flaws in the **Certify Insurance** portal, each with a ❌ vulnerable and ✅ secure endpoint you flip with a toggle:
 
 1. **HQL injection** — a logged-in customer tampers with a filter and reads **every** customer's policies.
 2. **Race condition (double payout)** — firing simultaneous claim-payout requests pays the same claim **multiple times**.
+3. **Insecure deserialization → RCE** — importing a crafted "saved quote" runs arbitrary commands on the server.
 
 ---
 
@@ -217,6 +218,57 @@ Other valid fixes on their stack: **optimistic concurrency** (a `<version>` colu
 
 ---
 
+# Vulnerability 3 — Insecure deserialization → remote code execution
+
+Customers can export an in-progress application and **re-import** it later. The importer deserializes the
+uploaded JSON with **Json.NET `TypeNameHandling.All`**, which lets the *payload* choose which .NET type to
+build. By naming a "gadget" type (`ReportTask`) plus a command, an attacker turns an import into **arbitrary
+code execution on the server**.
+
+### Demo it (portal)
+
+Open the **Quote Import** tab with the toggle on **❌ Vulnerable (v1)**. Pick a command (e.g. `id`), click
+**💣 Build RCE payload**, then **Import draft** — a red **REMOTE CODE EXECUTION** banner shows the command
+output. Flip to **✅ Secure (v2)** and import the same payload: nothing runs.
+
+### Demo it (terminal)
+
+```bash
+curl -s -X POST http://localhost:8088/api/v1/quotes/import \
+  -H "Content-Type: application/json" \
+  -d '{"$type":"CertifyLab.Domain.ReportTask, CertifyLab","Run":"id; hostname; uname -a"}'
+```
+
+Verified output — the gadget ran **as root** in the container:
+
+```
+uid=0(root) gid=0(root) groups=0(root)
+9894f6c4aef5
+Linux 9894f6c4aef5 ... x86_64 GNU/Linux
+```
+
+The same request to `/api/v2/quotes/import` returns an empty `QuoteDraft` and `commandOutput: null` — the
+gadget type is never instantiated.
+
+### The code — vulnerable vs fixed
+
+Gadget in [`Domain/ReportTask.cs`](Domain/ReportTask.cs); endpoints in [`Program.cs`](Program.cs):
+
+```csharp
+// ❌ VULNERABLE — the payload picks the CLR type; a gadget runs code on deserialization.
+var settings = new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All };
+var obj = JsonConvert.DeserializeObject(json, settings);   // builds ReportTask -> RCE
+
+// ✅ SECURE — bind into a concrete DTO with a serializer that ignores embedded types.
+var draft = System.Text.Json.JsonSerializer.Deserialize<QuoteDraft>(json, opts);  // data only
+```
+
+The rule: **never deserialize untrusted input with type information enabled.** Use a data-only serializer
+(`System.Text.Json`) into a known type. If polymorphism is genuinely required, allow-list types with
+`[JsonDerivedType]` — never `TypeNameHandling.All`. `BinaryFormatter` (removed in .NET 9) is the same trap.
+
+---
+
 ## How you'd catch these at Certify (DevSecOps)
 
 - **SonarQube taint analysis** — flags untrusted request data (`type`) reaching the `CreateQuery` sink.
@@ -226,6 +278,8 @@ Other valid fixes on their stack: **optimistic concurrency** (a `<version>` colu
 - **Regression test** — assert the injection payload on `/api/v1` returns only the caller's rows.
 - **Concurrency test** — fire N parallel payout requests in an integration test and assert the claim is paid
   exactly once. Scanners can't see race conditions; only tests do.
+- **Roslyn analyzers** `CA2326` (no `TypeNameHandling` other than `None`) and `CA2300`/`SYSLIB0011`
+  (no `BinaryFormatter`) promoted to **build errors**; grep PRs for `TypeNameHandling` and `BinaryFormatter`.
 
 ---
 
@@ -236,6 +290,7 @@ Other valid fixes on their stack: **optimistic concurrency** (a `<version>` colu
 | **Slide 5** — design vs attack sequence diagrams | the policy-lookup flow you run here |
 | **Slide 12** — NHibernate HQL injection fix | `PolicyRepository` before/after |
 | **Business-logic flaws** — race conditions / TOCTOU | `ClaimRepository` payout before/after |
+| **Slides 15–18** — insecure deserialization → RCE | `ReportTask` gadget + import endpoints |
 | **Slides 27–30** — DevSecOps gates | the detection checklist above |
 
 ---
@@ -258,6 +313,8 @@ CertifyLab/
 ├─ Domain/
 │  ├─ Policy.cs                       # policy entity (HQL injection demo)
 │  ├─ Claim.cs  ·  Payout.cs          # claim + payout ledger (race-condition demo)
+│  ├─ ReportTask.cs                   # deserialization gadget (RCE)
+│  └─ QuoteDraft.cs                   # safe import DTO (System.Text.Json target)
 ├─ Infrastructure/
 │  ├─ PolicyMap.cs  ·  ClaimMaps.cs   # NHibernate mappings
 │  ├─ SessionFactoryBuilder.cs        # SQLite config (WAL) + schema + seed

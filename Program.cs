@@ -114,4 +114,54 @@ app.MapPost("/api/claims/{id:int}/reset", (int id, ClaimRepository claims) =>
     return Results.Json(new { reset = id });
 });
 
+// ── Quote draft import (insecure deserialization -> RCE) ──────────────────
+// ❌ VULNERABLE — Json.NET with TypeNameHandling.All lets the payload pick the CLR
+//    type to instantiate. A gadget (ReportTask) runs a command on deserialization.
+app.MapPost("/api/v1/quotes/import", async (HttpRequest req) =>
+{
+    var json = await new StreamReader(req.Body).ReadToEndAsync();
+    try
+    {
+        var settings = new Newtonsoft.Json.JsonSerializerSettings
+        {
+            TypeNameHandling = Newtonsoft.Json.TypeNameHandling.All
+        };
+        var obj = Newtonsoft.Json.JsonConvert.DeserializeObject(json, settings);
+        return Results.Json(new
+        {
+            endpoint = "VULNERABLE — Json.NET TypeNameHandling.All",
+            deserializedType = obj?.GetType().FullName,
+            commandOutput = (obj as CertifyLab.Domain.ReportTask)?.Output,
+            draft = obj?.ToString()
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { endpoint = "VULNERABLE — Json.NET TypeNameHandling.All", error = ex.Message });
+    }
+});
+
+// ✅ SECURE — System.Text.Json binds into a concrete DTO. No embedded type names are
+//    honoured, so the gadget is never instantiated and nothing executes.
+app.MapPost("/api/v2/quotes/import", async (HttpRequest req) =>
+{
+    var json = await new StreamReader(req.Body).ReadToEndAsync();
+    try
+    {
+        var draft = System.Text.Json.JsonSerializer.Deserialize<CertifyLab.Domain.QuoteDraft>(
+            json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return Results.Json(new
+        {
+            endpoint = "SECURE — System.Text.Json, no type binding",
+            deserializedType = typeof(CertifyLab.Domain.QuoteDraft).FullName,
+            commandOutput = (string)null,
+            draft
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { endpoint = "SECURE — System.Text.Json, no type binding", error = ex.Message });
+    }
+});
+
 app.Run();
