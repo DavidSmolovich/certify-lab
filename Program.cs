@@ -12,6 +12,7 @@ var sessionFactory = SessionFactoryBuilder.Build(dbPath);
 
 builder.Services.AddSingleton<ISessionFactory>(sessionFactory);
 builder.Services.AddSingleton<PolicyRepository>();
+builder.Services.AddSingleton<ClaimRepository>();
 
 var app = builder.Build();
 
@@ -75,6 +76,42 @@ app.MapGet("/api/v2/policies", (HttpRequest req, PolicyRepository repo) =>
         leakedOtherCustomers = result.Any(p => p.CustomerId != customerId),
         policies = Project(result)
     });
+});
+
+// ── Claims & payouts (business-logic race condition) ──────────────────────
+app.MapGet("/api/claims", (HttpRequest req, ClaimRepository claims) =>
+{
+    var cid = CurrentCustomer(req);
+    var list = claims.ListForCustomer(cid).Select(c =>
+    {
+        var ps = claims.PayoutsFor(c.Id);
+        return new
+        {
+            c.Id,
+            c.ClaimNumber,
+            c.Description,
+            c.Amount,
+            c.Status,
+            timesPaid = ps.Count,
+            totalPaid = ps.Sum(p => p.Amount)
+        };
+    });
+    return Results.Json(list);
+});
+
+// ❌ VULNERABLE payout — TOCTOU race; concurrent calls pay the same claim repeatedly
+app.MapPost("/api/v1/claims/{id:int}/payout", (int id, ClaimRepository claims) =>
+    Results.Json(new { endpoint = "VULNERABLE — check-then-act", outcome = claims.PayoutVulnerable(id).ToString() }));
+
+// ✅ SECURE payout — atomic conditional update; pays at most once
+app.MapPost("/api/v2/claims/{id:int}/payout", (int id, ClaimRepository claims) =>
+    Results.Json(new { endpoint = "SECURE — atomic state transition", outcome = claims.PayoutSecure(id).ToString() }));
+
+// Reset a claim back to Approved (clears its payouts) so the lab is repeatable
+app.MapPost("/api/claims/{id:int}/reset", (int id, ClaimRepository claims) =>
+{
+    claims.Reset(id);
+    return Results.Json(new { reset = id });
 });
 
 app.Run();

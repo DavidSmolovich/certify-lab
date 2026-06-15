@@ -1,11 +1,16 @@
-# Certify Lab — HQL Injection in a Policy-Lookup Microservice
+# Certify Lab — Backend Logic & Data Integrity (.NET / NHibernate)
 
 > **Secure SDLC · Session 4 — Backend Logic & Data Integrity**
-> A hands-on companion to **Slide 5**. Unlike the Juice Shop demos (Node.js), this lab is **C# .NET Core + NHibernate** — *your* stack. The bug, and the fix, are in your own language.
+> A hands-on companion to the slides. Unlike the Juice Shop demos (Node.js), this lab is **C# .NET Core + NHibernate** — *your* stack. The bugs, and the fixes, are in your own language.
 
-A logged-in **Certify Insurance** customer opens the policy portal to list *their* policies, filtered by type. With one tampered filter value they walk out with **every customer's** policies — names, policy numbers, premiums. Then you fix it in one line.
+Two real backend flaws in the **Certify Insurance** portal, each with a ❌ vulnerable and ✅ secure endpoint you flip with a toggle:
+
+1. **HQL injection** — a logged-in customer tampers with a filter and reads **every** customer's policies.
+2. **Race condition (double payout)** — firing simultaneous claim-payout requests pays the same claim **multiple times**.
 
 ---
+
+# Vulnerability 1 — HQL injection
 
 ## The scenario
 
@@ -157,13 +162,70 @@ return session
 
 ---
 
-## How you'd catch this at Certify (DevSecOps)
+# Vulnerability 2 — Race condition: double-paying a claim
+
+An approved claim should be paid out **once** (`Status: Approved → Paid`). The vulnerable payout handler
+checks the status and *then* disburses as two separate steps — a **TOCTOU** gap. Fire several payout requests
+at the same instant and they all pass the check before any of them flips the status, so the claim is paid
+multiple times. No scanner flags this; the code is "correct."
+
+### Demo it (portal)
+
+Open the **Claims** tab with the toggle on **❌ Vulnerable (v1)**, find claim `CLM-2026-0007` (₪250,000
+total-loss) and click **⚡ Fire 5× (race)**. The ledger shows the claim **paid 5×** with a red **DOUBLE
+PAYOUT** banner — ₪1,250,000 disbursed on a ₪250,000 claim. Flip to **✅ Secure (v2)**, **Reset**, race
+again → it pays **once**.
+
+### Demo it (terminal, parallel requests)
+
+```bash
+# fire 5 payouts at once at the VULNERABLE endpoint (claim id 3 = CLM-2026-0007)
+curl --parallel --parallel-immediate -X POST \
+  http://localhost:8088/api/v1/claims/3/payout http://localhost:8088/api/v1/claims/3/payout \
+  http://localhost:8088/api/v1/claims/3/payout http://localhost:8088/api/v1/claims/3/payout \
+  http://localhost:8088/api/v1/claims/3/payout
+
+curl -s -H "X-Customer-Id: 1" http://localhost:8088/api/claims    # CLM-2026-0007 -> timesPaid 5, totalPaid 1250000
+curl -s -X POST http://localhost:8088/api/claims/3/reset          # reset, then race /api/v2 -> timesPaid 1
+```
+
+Verified: **v1 → paid 5× (₪1,250,000)** · **v2 → paid once (₪250,000)**.
+
+### The code — vulnerable vs fixed
+
+Both live in [`Infrastructure/ClaimRepository.cs`](Infrastructure/ClaimRepository.cs):
+
+```csharp
+// ❌ VULNERABLE — check, gap, then act (TOCTOU). Concurrent calls all pass the check.
+var claim = session.Get<Claim>(id);
+if (claim.Status != "Approved") return AlreadyPaid;     // time of check
+Thread.Sleep(200);                                      // fraud check / bank call = the race window
+claim.Status = "Paid"; session.Update(claim);           // time of use
+session.Save(new Payout { ... });
+
+// ✅ SECURE — atomic conditional transition; the DB picks exactly one winner.
+int affected = session.CreateQuery(
+    "update Claim c set c.Status = 'Paid' where c.Id = :id and c.Status = 'Approved'")
+    .SetParameter("id", id).ExecuteUpdate();
+if (affected != 1) return AlreadyPaid;                  // someone else already flipped it
+session.Save(new Payout { ... });
+```
+
+Other valid fixes on their stack: **optimistic concurrency** (a `<version>` column → the loser gets
+`StaleObjectStateException`), a **pessimistic lock** (`session.Get<Claim>(id, LockMode.Upgrade)` →
+`SELECT … FOR UPDATE`), or a **UNIQUE constraint** on `Payouts(ClaimId)` as a backstop.
+
+---
+
+## How you'd catch these at Certify (DevSecOps)
 
 - **SonarQube taint analysis** — flags untrusted request data (`type`) reaching the `CreateQuery` sink.
 - **Roslyn analyzer** `CA3001` (review for SQL injection) promoted to a **build error** in `.editorconfig`.
-- **Code review** — the two-person PR gate should reject any `CreateQuery("..." + value)`.
-- **Regression test** — assert the attack payload on `/api/v1` returns only the caller's rows. Once the
-  fix lands, that test fails forever if someone reintroduces concatenation.
+- **Code review** — the two-person PR gate should reject any `CreateQuery("..." + value)`, and any
+  "check then write" on money/state that isn't atomic.
+- **Regression test** — assert the injection payload on `/api/v1` returns only the caller's rows.
+- **Concurrency test** — fire N parallel payout requests in an integration test and assert the claim is paid
+  exactly once. Scanners can't see race conditions; only tests do.
 
 ---
 
@@ -171,8 +233,9 @@ return session
 
 | Deck | This lab |
 |---|---|
-| **Slide 5** — design vs attack sequence diagrams | the exact flow you run here |
+| **Slide 5** — design vs attack sequence diagrams | the policy-lookup flow you run here |
 | **Slide 12** — NHibernate HQL injection fix | `PolicyRepository` before/after |
+| **Business-logic flaws** — race conditions / TOCTOU | `ClaimRepository` payout before/after |
 | **Slides 27–30** — DevSecOps gates | the detection checklist above |
 
 ---
@@ -191,14 +254,17 @@ The SQLite database is recreated and reseeded on every startup, so the lab is al
 
 ```
 CertifyLab/
-├─ Program.cs                         # endpoints: /api/v1 (vuln), /api/v2 (secure); serves the portal UI
-├─ Domain/Policy.cs                   # the entity
+├─ Program.cs                         # API endpoints (v1 vuln / v2 secure) + serves the portal UI
+├─ Domain/
+│  ├─ Policy.cs                       # policy entity (HQL injection demo)
+│  ├─ Claim.cs  ·  Payout.cs          # claim + payout ledger (race-condition demo)
 ├─ Infrastructure/
-│  ├─ PolicyMap.cs                    # NHibernate mapping-by-code
-│  ├─ SessionFactoryBuilder.cs        # SQLite config + schema + seed
+│  ├─ PolicyMap.cs  ·  ClaimMaps.cs   # NHibernate mappings
+│  ├─ SessionFactoryBuilder.cs        # SQLite config (WAL) + schema + seed
 │  ├─ MicrosoftDataSqliteDriver.cs    # NHibernate driver for Microsoft.Data.Sqlite
-│  └─ PolicyRepository.cs             # ❌ vulnerable + ✅ secure queries  <-- the lab
-├─ wwwroot/index.html                 # Certify portal UI — toggle switches v1 ↔ v2
+│  ├─ PolicyRepository.cs             # ❌/✅ HQL injection
+│  └─ ClaimRepository.cs              # ❌/✅ race condition  (TOCTOU)
+├─ wwwroot/index.html                 # portal UI — Policies + Claims tabs, v1 ↔ v2 toggle
 ├─ Dockerfile · docker-compose.yml · .dockerignore
 └─ README.md
 ```

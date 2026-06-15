@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Certify Insurance — My Policies</title>
+<title>Certify Insurance — Portal</title>
 <style>
   :root{
     --brand:#0E7C7B; --brand-d:#0a5f5e;
     --ink:#0f172a; --muted:#64748b; --bg:#f1f5f9; --card:#ffffff; --line:#e2e8f0;
-    --red:#dc2626; --red-bg:#fef2f2; --green:#16a34a; --green-bg:#f0fdf4;
+    --red:#dc2626; --red-bg:#fef2f2; --green:#16a34a; --green-bg:#f0fdf4; --amber:#b45309; --amber-bg:#fffbeb;
     --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
@@ -16,7 +16,7 @@
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
   .hidden{display:none !important}
 
-  /* ── Security lab control bar ─────────────────────────────── */
+  /* security lab control bar */
   .lab{background:#0E1116;color:#e6edf3;border-bottom:2px solid #B3261E}
   .lab .row{max-width:1080px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   .lab .tag{font:700 11px var(--mono);letter-spacing:.12em;color:#9aa7b4;text-transform:uppercase}
@@ -28,14 +28,14 @@
   .seg button.on.safe{background:#1B7F4B;color:#fff}
   .lab select{background:#161B22;color:#e6edf3;border:1px solid #2b333d;border-radius:8px;padding:7px 10px;font:600 12px var(--sans)}
 
-  /* ── App chrome ───────────────────────────────────────────── */
+  /* app chrome */
   .appbar{background:var(--card);border-bottom:1px solid var(--line)}
   .appbar .row{max-width:1080px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:20px}
   .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--brand)}
   .brand .mark{width:26px;height:26px;border-radius:7px;background:var(--brand);display:grid;place-items:center;color:#fff;font-size:15px}
   nav{display:flex;gap:18px}
-  nav a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
-  nav a.active{color:var(--ink);border-bottom:2px solid var(--brand);padding-bottom:4px}
+  nav a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px;cursor:pointer;padding-bottom:4px}
+  nav a.active{color:var(--ink);border-bottom:2px solid var(--brand)}
   .user{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:14px;color:var(--muted)}
   .avatar{width:30px;height:30px;border-radius:50%;background:#cbd5e1;color:#0f172a;display:grid;place-items:center;font-weight:700;font-size:13px}
 
@@ -43,14 +43,12 @@
   h1{font-size:22px;margin:0 0 4px}
   .sub{color:var(--muted);font-size:14px;margin:0 0 20px}
 
-  /* summary cards */
   .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
   @media(max-width:680px){.cards{grid-template-columns:1fr}}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
   .stat .k{font-size:12px;color:var(--muted);font-weight:600}
   .stat .v{font-size:22px;font-weight:800;margin-top:4px}
 
-  /* filter */
   .filter{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
   .filter .lead{font-weight:700;font-size:14px;margin-bottom:10px}
   .filter .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -59,23 +57,24 @@
   .btn{border:0;border-radius:9px;padding:10px 16px;font:700 13px var(--sans);cursor:pointer}
   .btn.go{background:var(--brand);color:#fff}
   .btn.go:hover{background:var(--brand-d)}
+  .btn.sm{padding:6px 11px;font-size:12px}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--muted)}
+  .btn.danger{background:var(--red);color:#fff}
+  .btn.race{background:#7c2d12;color:#fff}
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font:600 12px var(--sans);cursor:pointer;color:var(--muted)}
   .chip:hover{border-color:var(--brand);color:var(--brand)}
   .chip.evil{border-color:var(--red);color:var(--red);background:var(--red-bg);font-family:var(--mono)}
 
-  /* banners */
   .breach{background:var(--red-bg);border:1px solid #fecaca;border-left:5px solid var(--red);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#7f1d1d}
   .breach b{color:var(--red)}
   .safe-note{background:var(--green-bg);border:1px solid #bbf7d0;border-left:5px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#14532d}
 
-  /* request info */
   .reqinfo{font:500 12.5px var(--mono);background:#0c1014;color:#c4ccd4;border-radius:10px;padding:12px 14px;margin-bottom:18px;overflow:auto}
   .reqinfo .m{color:#7ee0b8}.reqinfo .v1{color:#F1685E;font-weight:700}.reqinfo .v2{color:#3FB984;font-weight:700}
 
-  /* table */
   table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+  th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{background:#f8fafc;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
   tr:last-child td{border-bottom:0}
   tr.foreign td{background:var(--red-bg)}
@@ -84,22 +83,25 @@
   .who .nm{font-weight:600}
   .badge-foreign{display:inline-block;margin-left:8px;font:700 10px var(--sans);color:#fff;background:var(--red);border-radius:5px;padding:2px 6px;vertical-align:middle}
   .pill{font:700 11px var(--sans);border-radius:999px;padding:3px 9px}
-  .pill.Active{background:#dcfce7;color:#166534}.pill.Lapsed{background:#fee2e2;color:#991b1b}
+  .pill.Active,.pill.Approved{background:#dcfce7;color:#166534}
+  .pill.Lapsed{background:#fee2e2;color:#991b1b}
+  .pill.Paid{background:#e0e7ff;color:#3730a3}
+  .actions{display:flex;gap:6px;flex-wrap:wrap}
   .empty{padding:30px;text-align:center;color:var(--muted)}
   footer{max-width:1080px;margin:0 auto;padding:20px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
 
-  <!-- ── SECURITY LAB CONTROL BAR ─────────────────────────────── -->
+  <!-- security lab control bar -->
   <div class="lab"><div class="row">
-    <span class="tag">🔬 Secure SDLC Lab · HQL Injection</span>
+    <span class="tag">🔬 Secure SDLC Lab · Certify Insurance</span>
     <div class="spacer"></div>
     <div>
       <label>Endpoint</label>
       <span class="seg" id="seg">
-        <button id="segV1" class="on vuln" data-mode="v1">❌ Vulnerable (v1)</button>
-        <button id="segV2" class="safe" data-mode="v2">✅ Secure (v2)</button>
+        <button class="on vuln" data-mode="v1">❌ Vulnerable (v1)</button>
+        <button class="safe" data-mode="v2">✅ Secure (v2)</button>
       </span>
     </div>
     <div>
@@ -113,150 +115,208 @@
     </div>
   </div></div>
 
-  <!-- ── APP HEADER ───────────────────────────────────────────── -->
+  <!-- app header -->
   <header class="appbar"><div class="row">
     <div class="brand"><span class="mark">◆</span> Certify<span style="color:var(--ink)">Insurance</span></div>
     <nav>
-      <a href="#">Dashboard</a>
-      <a href="#" class="active">My Policies</a>
-      <a href="#">Claims</a>
-      <a href="#">Documents</a>
+      <a>Dashboard</a>
+      <a id="navPolicies" class="active">My Policies</a>
+      <a id="navClaims">Claims</a>
+      <a>Documents</a>
     </nav>
     <div class="user"><span id="userName">Dana Cohen</span><span class="avatar" id="userAv">DC</span></div>
   </div></header>
 
-  <!-- ── MAIN ─────────────────────────────────────────────────── -->
   <main>
-    <h1>My Policies</h1>
-    <p class="sub">View and filter the policies on your account.</p>
+    <!-- ───────── POLICIES TAB (HQL injection demo) ───────── -->
+    <section id="tab-policies">
+      <h1>My Policies</h1>
+      <p class="sub">View and filter the policies on your account.</p>
 
-    <div class="cards">
-      <div class="stat"><div class="k">Policies shown</div><div class="v" id="cShown">–</div></div>
-      <div class="stat"><div class="k">Total annual premium</div><div class="v" id="cPrem">–</div></div>
-      <div class="stat"><div class="k">Account holder</div><div class="v" id="cHolder" style="font-size:16px">–</div></div>
-    </div>
-
-    <div class="filter">
-      <div class="lead">Filter your policies by type</div>
-      <div class="controls">
-        <input id="type" value="Auto" placeholder="e.g. Auto, Home, Life, Health" />
-        <button class="btn go" id="search">Search</button>
+      <div class="cards">
+        <div class="stat"><div class="k">Policies shown</div><div class="v" id="cShown">–</div></div>
+        <div class="stat"><div class="k">Total annual premium</div><div class="v" id="cPrem">–</div></div>
+        <div class="stat"><div class="k">Account holder</div><div class="v" id="cHolder" style="font-size:16px">–</div></div>
       </div>
-      <div class="chips">
-        <span class="chip" data-type="Auto">Auto</span>
-        <span class="chip" data-type="Home">Home</span>
-        <span class="chip" data-type="Life">Life</span>
-        <span class="chip" data-type="Health">Health</span>
-        <span class="chip evil" data-type="x' OR '1'='1">💉 inject: x' OR '1'='1</span>
-      </div>
-    </div>
 
-    <div id="breach" class="breach hidden"></div>
-    <div id="safeNote" class="safe-note hidden"></div>
-    <div id="reqinfo" class="reqinfo"></div>
-    <div id="results"></div>
+      <div class="filter">
+        <div class="lead">Filter your policies by type</div>
+        <div class="controls">
+          <input id="type" value="Auto" placeholder="e.g. Auto, Home, Life, Health" />
+          <button class="btn go" id="search">Search</button>
+        </div>
+        <div class="chips">
+          <span class="chip" data-type="Auto">Auto</span>
+          <span class="chip" data-type="Home">Home</span>
+          <span class="chip" data-type="Life">Life</span>
+          <span class="chip" data-type="Health">Health</span>
+          <span class="chip evil" data-type="x' OR '1'='1">💉 inject: x' OR '1'='1</span>
+        </div>
+      </div>
+
+      <div id="breach" class="breach hidden"></div>
+      <div id="safeNote" class="safe-note hidden"></div>
+      <div id="reqinfo" class="reqinfo"></div>
+      <div id="results"></div>
+    </section>
+
+    <!-- ───────── CLAIMS TAB (race-condition demo) ───────── -->
+    <section id="tab-claims" class="hidden">
+      <h1>Claims &amp; Payouts</h1>
+      <p class="sub">Approved claims are paid out <b>once</b>. Payout requests hit the
+        <b id="claimModeLabel" style="color:var(--red)">vulnerable</b> endpoint (set by the toggle above).
+        Use <b>⚡ Fire 5× (race)</b> to send simultaneous payout requests.</p>
+
+      <div id="claimBreach" class="breach hidden"></div>
+      <div id="claimSafe" class="safe-note hidden"></div>
+      <div id="claimReq" class="reqinfo"></div>
+      <div id="claimsResults"></div>
+    </section>
   </main>
 
   <footer>© 2026 Certify Insurance Ltd. · Demo environment for the ToDo Security Solutions Secure SDLC workshop. Not a real insurer.</footer>
 
 <script>
-  const state = { mode: 'v1', customer: 1, type: 'Auto' };
+  const state = { mode:'v1', customer:1, type:'Auto', tab:'policies' };
   const $ = s => document.querySelector(s);
   const fmt = n => '₪' + Number(n).toLocaleString('en-US');
+  const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+  // ── shared controls ──────────────────────────────────────
   function setMode(mode){
     state.mode = mode;
-    $('#segV1').classList.toggle('on', mode === 'v1');
-    $('#segV2').classList.toggle('on', mode === 'v2');
-    run();
+    document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    $('#claimModeLabel').textContent = mode === 'v1' ? 'vulnerable' : 'secure';
+    $('#claimModeLabel').style.color = mode === 'v1' ? 'var(--red)' : 'var(--green)';
+    refreshActive();
   }
-
-  document.querySelectorAll('#seg button').forEach(b =>
-    b.addEventListener('click', () => setMode(b.dataset.mode)));
+  document.querySelectorAll('#seg button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
   $('#customer').addEventListener('change', e => {
     state.customer = parseInt(e.target.value, 10);
     const name = e.target.selectedOptions[0].text.split('·')[1].replace('(you)','').trim();
     $('#userName').textContent = name;
     $('#userAv').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-    run();
+    refreshActive();
   });
 
-  $('#search').addEventListener('click', () => { state.type = $('#type').value; run(); });
-  $('#type').addEventListener('keydown', e => { if (e.key === 'Enter'){ state.type = $('#type').value; run(); } });
-  document.querySelectorAll('.chip').forEach(c =>
-    c.addEventListener('click', () => { state.type = c.dataset.type; $('#type').value = c.dataset.type; run(); }));
-
-  async function run(){
-    const params = new URLSearchParams({ type: state.type });
-    const url = `/api/${state.mode}/policies?${params}`;
-    let data;
-    try{
-      const res = await fetch(url, { headers: { 'X-Customer-Id': String(state.customer) } });
-      data = await res.json();
-    }catch(err){
-      $('#results').innerHTML = `<div class="empty">Request failed: ${err}</div>`;
-      return;
-    }
-    render(url, data);
+  function showTab(tab){
+    state.tab = tab;
+    $('#tab-policies').classList.toggle('hidden', tab !== 'policies');
+    $('#tab-claims').classList.toggle('hidden', tab !== 'claims');
+    $('#navPolicies').classList.toggle('active', tab === 'policies');
+    $('#navClaims').classList.toggle('active', tab === 'claims');
+    refreshActive();
   }
+  $('#navPolicies').addEventListener('click', () => showTab('policies'));
+  $('#navClaims').addEventListener('click', () => showTab('claims'));
+  function refreshActive(){ state.tab === 'claims' ? loadClaims() : runPolicies(); }
 
-  function render(url, data){
-    const me = data.loggedInCustomerId;
-    const rows = data.policies || [];
+  // ── POLICIES (HQL injection) ─────────────────────────────
+  $('#search').addEventListener('click', () => { state.type = $('#type').value; runPolicies(); });
+  $('#type').addEventListener('keydown', e => { if (e.key === 'Enter'){ state.type = $('#type').value; runPolicies(); } });
+  document.querySelectorAll('.chip').forEach(c =>
+    c.addEventListener('click', () => { state.type = c.dataset.type; $('#type').value = c.dataset.type; runPolicies(); }));
+
+  async function runPolicies(){
+    const url = `/api/${state.mode}/policies?` + new URLSearchParams({ type: state.type });
+    let data;
+    try { data = await (await fetch(url, { headers:{ 'X-Customer-Id': String(state.customer) } })).json(); }
+    catch(err){ $('#results').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+
+    const me = data.loggedInCustomerId, rows = data.policies || [];
     const foreign = rows.filter(p => p.customerId !== me);
-    const modeClass = state.mode === 'v1' ? 'v1' : 'v2';
-
-    // request/response line (educational)
+    const mc = state.mode === 'v1' ? 'v1' : 'v2';
     $('#reqinfo').innerHTML =
-      `<span class="m">GET</span> <span class="${modeClass}">${url}</span>` +
-      `  ·  X-Customer-Id: ${me}<br>` +
-      `<span class="m">↳</span> ${data.endpoint} — returned ${data.returned}, ` +
-      `leakedOtherCustomers: <b>${data.leakedOtherCustomers}</b>`;
+      `<span class="m">GET</span> <span class="${mc}">${escapeHtml(url)}</span>  ·  X-Customer-Id: ${me}<br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint)} — returned ${data.returned}, leakedOtherCustomers: <b>${data.leakedOtherCustomers}</b>`;
 
-    // banners
     const breach = $('#breach'), safe = $('#safeNote');
     breach.classList.add('hidden'); safe.classList.add('hidden');
     if (data.leakedOtherCustomers){
       breach.classList.remove('hidden');
-      breach.innerHTML = `🚨 <b>DATA BREACH</b> — this response exposed <b>${foreign.length}</b> ` +
-        `policies belonging to other customers. A logged-in customer just read the entire book of business.`;
+      breach.innerHTML = `🚨 <b>DATA BREACH</b> — this response exposed <b>${foreign.length}</b> policies belonging to other customers.`;
     } else if (/['"]|OR|UNION|--/i.test(state.type)){
       safe.classList.remove('hidden');
       safe.textContent = state.mode === 'v2'
-        ? '✅ Injection neutralized — the parameterized endpoint treated your input as literal data, returning only matching rows.'
+        ? '✅ Injection neutralized — the parameterized endpoint treated your input as literal data.'
         : '✅ No cross-customer data in this response.';
     }
 
-    // summary
     $('#cShown').textContent = data.returned;
-    $('#cPrem').textContent = fmt(rows.reduce((s,p)=>s + (p.premium||0), 0));
+    $('#cPrem').textContent = fmt(rows.reduce((s,p)=>s+(p.premium||0),0));
     $('#cHolder').textContent = '#' + me;
 
-    // table
-    if (!rows.length){
-      $('#results').innerHTML = `<div class="empty">No policies match “${escapeHtml(state.type)}”.</div>`;
-      return;
-    }
-    const body = rows.map(p => {
-      const isForeign = p.customerId !== me;
-      return `<tr class="${isForeign ? 'foreign' : ''}">
-        <td><code>${escapeHtml(p.policyNumber)}</code></td>
-        <td>${escapeHtml(p.type)}</td>
-        <td>${fmt(p.premium)}</td>
-        <td><span class="pill ${p.status}">${escapeHtml(p.status)}</span></td>
-        <td><div class="who"><span class="nm">${escapeHtml(p.customerName)} <span class="muted">(#${p.customerId})</span>${isForeign ? '<span class="badge-foreign">NOT YOUR POLICY</span>' : ''}</span></div></td>
-      </tr>`;
-    }).join('');
+    if (!rows.length){ $('#results').innerHTML = `<div class="empty">No policies match “${escapeHtml(state.type)}”.</div>`; return; }
     $('#results').innerHTML =
-      `<table><thead><tr><th>Policy #</th><th>Type</th><th>Premium</th><th>Status</th><th>Policyholder</th></tr></thead>` +
-      `<tbody>${body}</tbody></table>`;
+      `<table><thead><tr><th>Policy #</th><th>Type</th><th>Premium</th><th>Status</th><th>Policyholder</th></tr></thead><tbody>` +
+      rows.map(p => {
+        const f = p.customerId !== me;
+        return `<tr class="${f?'foreign':''}">
+          <td><code>${escapeHtml(p.policyNumber)}</code></td><td>${escapeHtml(p.type)}</td><td>${fmt(p.premium)}</td>
+          <td><span class="pill ${escapeHtml(p.status)}">${escapeHtml(p.status)}</span></td>
+          <td><div class="who"><span class="nm">${escapeHtml(p.customerName)} <span class="muted">(#${p.customerId})</span>${f?'<span class="badge-foreign">NOT YOUR POLICY</span>':''}</span></div></td>
+        </tr>`;
+      }).join('') + `</tbody></table>`;
   }
 
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // ── CLAIMS (race condition) ──────────────────────────────
+  async function loadClaims(){
+    let claims;
+    try { claims = await (await fetch('/api/claims', { headers:{ 'X-Customer-Id': String(state.customer) } })).json(); }
+    catch(err){ $('#claimsResults').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
 
-  run(); // initial load
+    const doubled = claims.filter(c => c.timesPaid > 1);
+    const breach = $('#claimBreach'), safe = $('#claimSafe');
+    breach.classList.add('hidden'); safe.classList.add('hidden');
+    if (doubled.length){
+      const c = doubled[0];
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>DOUBLE PAYOUT</b> — claim <code>${escapeHtml(c.claimNumber)}</code> was paid ` +
+        `<b>${c.timesPaid}×</b>. Certify disbursed <b>${fmt(c.totalPaid)}</b> on a ${fmt(c.amount)} claim ` +
+        `(overpaid ${fmt(c.totalPaid - c.amount)}).`;
+    }
+
+    if (!claims.length){ $('#claimsResults').innerHTML = `<div class="empty">No claims on this account.</div>`; return; }
+    $('#claimsResults').innerHTML =
+      `<table><thead><tr><th>Claim #</th><th>Description</th><th>Amount</th><th>Status</th><th>Times paid</th><th>Disbursed</th><th>Actions</th></tr></thead><tbody>` +
+      claims.map(c => {
+        const over = c.timesPaid > 1;
+        return `<tr class="${over?'foreign':''}">
+          <td><code>${escapeHtml(c.claimNumber)}</code></td>
+          <td>${escapeHtml(c.description)}</td>
+          <td>${fmt(c.amount)}</td>
+          <td><span class="pill ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></td>
+          <td><b style="color:${over?'var(--red)':'inherit'}">${c.timesPaid}</b></td>
+          <td>${fmt(c.totalPaid)}${over?' <span class="badge-foreign">OVERPAID</span>':''}</td>
+          <td><div class="actions">
+            <button class="btn sm go"    data-act="pay"   data-id="${c.id}">Pay once</button>
+            <button class="btn sm race"  data-act="race"  data-id="${c.id}">⚡ Fire 5× (race)</button>
+            <button class="btn sm ghost" data-act="reset" data-id="${c.id}">Reset</button>
+          </div></td>
+        </tr>`;
+      }).join('') + `</tbody></table>`;
+  }
+
+  async function payout(id, times){
+    const url = `/api/${state.mode}/claims/${id}/payout`;
+    const mc = state.mode === 'v1' ? 'v1' : 'v2';
+    $('#claimReq').innerHTML = `<span class="m">POST ×${times}${times>1?' (parallel)':''}</span> <span class="${mc}">${escapeHtml(url)}</span>`;
+    await Promise.all(Array.from({ length: times }, () => fetch(url, { method:'POST' })));
+    await loadClaims();
+  }
+  async function resetClaim(id){ await fetch(`/api/claims/${id}/reset`, { method:'POST' }); await loadClaims(); }
+
+  $('#claimsResults').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const id = parseInt(b.dataset.id, 10);
+    if (b.dataset.act === 'pay')   payout(id, 1);
+    if (b.dataset.act === 'race')  payout(id, 5);
+    if (b.dataset.act === 'reset') resetClaim(id);
+  });
+
+  // initial load
+  runPolicies();
 </script>
 </body>
 </html>

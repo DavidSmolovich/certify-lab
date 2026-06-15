@@ -22,7 +22,7 @@ public static class SessionFactoryBuilder
         {
             db.Dialect<SQLiteDialect>();
             db.Driver<MicrosoftDataSqliteDriver>();
-            db.ConnectionString = $"Data Source={dbPath}";
+            db.ConnectionString = $"Data Source={dbPath};Default Timeout=30";
             db.LogSqlInConsole = true;     // print the generated SQL to the container logs
             db.LogFormattedSql = true;
         });
@@ -34,12 +34,21 @@ public static class SessionFactoryBuilder
 
         var mapper = new ModelMapper();
         mapper.AddMapping<PolicyMap>();
+        mapper.AddMapping<ClaimMap>();
+        mapper.AddMapping<PayoutMap>();
         cfg.AddMapping(mapper.CompileMappingForAllExplicitlyAddedEntities());
 
         // Fresh schema on every startup -> the demo always looks the same.
         new SchemaExport(cfg).Create(useStdOut: false, execute: true);
 
         var factory = cfg.BuildSessionFactory();
+
+        // WAL + busy-retry (Default Timeout above) let a second concurrent payout
+        // wait for the first instead of erroring — which is what makes the race
+        // condition observable rather than just throwing SQLITE_BUSY.
+        using (var s = factory.OpenSession())
+            s.CreateSQLQuery("PRAGMA journal_mode=WAL").UniqueResult();
+
         Seed(factory);
         return factory;
     }
@@ -70,6 +79,19 @@ public static class SessionFactoryBuilder
         Add(3, "Maya Friedman",    "CERT-2026-3001", "Auto",    2675m, "Lapsed");
         Add(3, "Maya Friedman",    "CERT-2026-3002", "Home",    2200m, "Active");
         Add(4, "Avi Stern (CEO)",  "CERT-2026-4001", "Life",   45000m, "Active"); // the juicy target
+
+        // Approved claims — each must be paid out exactly once.
+        void Claim(int cid, string name, string num, string desc, decimal amt)
+            => session.Save(new Claim
+            {
+                CustomerId = cid, CustomerName = name, ClaimNumber = num,
+                Description = desc, Amount = amt, Status = "Approved"
+            });
+
+        Claim(1, "Dana Cohen", "CLM-2026-0001", "Windshield replacement",                1200m);
+        Claim(1, "Dana Cohen", "CLM-2026-0002", "Water damage - kitchen",               18500m);
+        Claim(1, "Dana Cohen", "CLM-2026-0007", "Total loss - vehicle (comprehensive)", 250000m);
+        Claim(2, "Yossi Levi", "CLM-2026-0103", "Storm damage - roof",                   32000m);
 
         tx.Commit();
     }
