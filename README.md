@@ -1,13 +1,20 @@
-# Certify Lab — Backend Logic & Data Integrity (.NET / NHibernate)
+# Certify Lab — Secure SDLC Hands-On (.NET / NHibernate)
 
-> **Secure SDLC · Session 4 — Backend Logic & Data Integrity**
+> **Secure SDLC · Session 4 — Backend Logic & Data Integrity · Session 5 — Infrastructure, Databases & Server Hardening**
 > A hands-on companion to the slides. Unlike the Juice Shop demos (Node.js), this lab is **C# .NET Core + NHibernate** — *your* stack. The bugs, and the fixes, are in your own language.
 
-Three real backend flaws in the **Certify Insurance** portal, each with a ❌ vulnerable and ✅ secure endpoint you flip with a toggle:
+**Session 4** — three backend flaws in the **Certify Insurance** portal, each a ❌ vulnerable / ✅ secure endpoint you flip with a toggle:
 
 1. **HQL injection** — a logged-in customer tampers with a filter and reads **every** customer's policies.
 2. **Race condition (double payout)** — firing simultaneous claim-payout requests pays the same claim **multiple times**.
 3. **Insecure deserialization → RCE** — importing a crafted "saved quote" runs arbitrary commands on the server.
+
+**Session 5** — four more toggled demos covering the *environment* the code runs in (new tabs: **Server**, **Database**, **Secrets**, **Documents**):
+
+4. **Server hardening** — a production error page leaks the connection string, stack trace, and server banners.
+5. **Database least privilege** — an over-privileged (`db_owner`) app login reads a sensitive `internal_users` table.
+6. **Secrets management** — the DB connection string sits in a committed `appsettings.json` instead of Key Vault.
+7. **SSRF → cloud metadata** — a "fetch document from URL" feature is tricked into stealing the Managed Identity token and the DB credentials.
 
 ---
 
@@ -269,6 +276,93 @@ The rule: **never deserialize untrusted input with type information enabled.** U
 
 ---
 
+# Session 5 — Infrastructure, Databases & Server Hardening
+
+Four more toggled demos in the **same portal** — this time the *environment* the code runs in. Same
+❌v1 / ✅v2 toggle; new tabs: **Server**, **Database**, **Secrets**, **Documents**.
+
+> **Fully offline.** A **mock Azure IMDS** and **mock Key Vault** live inside the app, alongside a seeded
+> `internal_users` table and a deliberately-committed `appsettings.json`. No cloud account, no external SQL
+> Server. The address `169.254.169.254` is simulated so the SSRF chain runs on your laptop.
+
+## ① Server hardening — the error page that leaks everything
+
+**Portal:** open the **Server** tab and **Run server report** on ❌v1 — the response leaks the **connection
+string**, a stack trace, the framework version, and `Server` / `X-Powered-By` banners. Flip to ✅v2 — a
+generic error, banners gone, security headers (HSTS, CSP, `nosniff`, …) present.
+
+```bash
+curl -i http://localhost:8088/api/v1/server/report   # ❌ leaks the connection string + banners
+curl -i http://localhost:8088/api/v2/server/report   # ✅ generic ProblemDetails, hardened headers
+```
+
+Code: the `/server/report` endpoints in `Program.cs` + `builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false)`.
+
+## ② Database least privilege — db_owner vs scoped login
+
+The policy service has a foothold and pivots to `internal_users` (admin credential hashes), a table it never
+needs. Whether it succeeds depends only on the **DB login's privilege**.
+
+**Portal:** **Database** tab → **⛏️ Dump internal_users**. ❌v1 (db_owner) returns the hashes; ✅v2 (scoped) is denied.
+
+```bash
+curl -s http://localhost:8088/api/v1/db/internal-users   # ❌ db_owner -> admin password hashes
+curl -s http://localhost:8088/api/v2/db/internal-users   # ✅ least privilege -> permission denied
+```
+
+Code: `Infrastructure/AdminRepository.cs`; the sensitive table is seeded in `SessionFactoryBuilder.cs`.
+
+## ③ Secrets — committed appsettings.json vs Key Vault
+
+**Portal:** **Secrets** tab → **Read config**. ❌v1 reads the connection string straight from committed
+`appsettings.json`; ✅v2 shows only a `@Microsoft.KeyVault(...)` reference and a masked, runtime-resolved value.
+
+```bash
+curl -s http://localhost:8088/api/v1/secrets/config   # ❌ plaintext secret from appsettings.json
+curl -s http://localhost:8088/api/v2/secrets/config   # ✅ Key Vault reference; value masked
+git log -p -- appsettings.json                        # the secret is in history — rotate, don't just delete
+```
+
+Code: `appsettings.json` (the committed secret) + the `/secrets/config` endpoints in `Program.cs`.
+
+## ④ SSRF → cloud metadata → Key Vault → DB
+
+A "fetch document from URL" feature. ❌v1 fetches **anything**; point it at the metadata endpoint and the
+server hands back its **Managed Identity token**, which unlocks Key Vault and the DB credentials. ✅v2
+allow-lists the host and blocks link-local / private addresses.
+
+**Portal:** **Documents** tab → click the **☠️ SSRF: Azure IMDS token** chip → **Fetch** on ❌v1. The page
+renders the full chain: SSRF → token → Key Vault → connection string. Flip to ✅v2 → blocked.
+
+```bash
+# ❌ v1 — SSRF reaches the (simulated) Azure metadata endpoint and returns the MI token
+curl -s -X POST http://localhost:8088/api/v1/documents/fetch -H "Content-Type: application/json" \
+  -d '{"url":"http://169.254.169.254/metadata/identity/oauth2/token?resource=https://vault.azure.net"}'
+
+# present the stolen token to Key Vault -> the DB connection string
+curl -s -X POST http://localhost:8088/api/attack/keyvault -H "Content-Type: application/json" \
+  -d '{"token":"<access_token from the response above>"}'
+
+# ✅ v2 — the same URL is blocked (link-local, not on the allow-list)
+curl -s -X POST http://localhost:8088/api/v2/documents/fetch -H "Content-Type: application/json" \
+  -d '{"url":"http://169.254.169.254/metadata/identity/oauth2/token"}'
+```
+
+Code: `Infrastructure/MockAzure.cs` (the IMDS / Key Vault mocks **and** the real v2 allow-list + private-IP
+checks); endpoints in `Program.cs`.
+
+### Map to the deck (Session 5)
+
+| Deck | This lab |
+|---|---|
+| **Slides 7–9** — verbose errors / leaked connection string | **Server** tab |
+| **Slides 11–12** — security headers, banners off | the header table in the Server tab |
+| **Slides 15–18** — least privilege, `db_owner` blast radius | **Database** tab |
+| **Slides 24–27** — secrets in config → Key Vault | **Secrets** tab |
+| **Slides 33–35** — SSRF → IMDS → Key Vault chain | **Documents** tab |
+
+---
+
 ## How you'd catch these at Certify (DevSecOps)
 
 - **SonarQube taint analysis** — flags untrusted request data (`type`) reaching the `CreateQuery` sink.
@@ -320,12 +414,16 @@ CertifyLab/
 │  ├─ SessionFactoryBuilder.cs        # SQLite config (WAL) + schema + seed
 │  ├─ MicrosoftDataSqliteDriver.cs    # NHibernate driver for Microsoft.Data.Sqlite
 │  ├─ PolicyRepository.cs             # ❌/✅ HQL injection
-│  └─ ClaimRepository.cs              # ❌/✅ race condition  (TOCTOU)
-├─ wwwroot/index.html                 # portal UI — Policies + Claims tabs, v1 ↔ v2 toggle
+│  ├─ ClaimRepository.cs              # ❌/✅ race condition  (TOCTOU)
+│  ├─ AdminRepository.cs              # ❌/✅ DB least privilege (internal_users)   [S5 ②]
+│  ├─ LabSecrets.cs                   # shared fake connection string / MI token    [S5]
+│  └─ MockAzure.cs                    # mock IMDS + Key Vault + SSRF URL validation  [S5 ④]
+├─ appsettings.json                   # deliberately-committed secret               [S5 ③]
+├─ wwwroot/index.html                 # portal UI — 7 tabs, v1 ↔ v2 toggle
 ├─ Dockerfile · docker-compose.yml · .dockerignore
 └─ README.md
 ```
 
 ---
 
-*ToDo Security Solutions · Secure SDLC · Session 4 — Backend Logic & Data Integrity · David Smolovich · david@smolovich.com*
+*ToDo Security Solutions · Secure SDLC · Sessions 4–5 · David Smolovich · david@smolovich.com*

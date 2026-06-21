@@ -128,6 +128,10 @@
       <a id="navPolicies" class="active">My Policies</a>
       <a id="navClaims">Claims</a>
       <a id="navImport">Quote Import</a>
+      <a id="navServer">Server</a>
+      <a id="navDatabase">Database</a>
+      <a id="navSecrets">Secrets</a>
+      <a id="navSsrf">Documents</a>
     </nav>
     <div class="user"><span id="userName">Dana Cohen</span><span class="avatar" id="userAv">DC</span></div>
   </div></header>
@@ -213,6 +217,76 @@
       <div id="importReq" class="reqinfo"></div>
       <div id="importOut"></div>
     </section>
+    <!-- ───────── SERVER TAB · Module ① (verbose error + banners) ───────── -->
+    <section id="tab-server" class="hidden">
+      <h1>Server diagnostics</h1>
+      <p class="sub">Module ① — run a diagnostic that fails on the backend and inspect what the
+        response reveals. The toggle above switches between a leaky server (v1) and a hardened one (v2).</p>
+      <div class="filter">
+        <div class="lead">Trigger a backend error and read the response</div>
+        <div class="controls"><button class="btn go" id="serverRun">Run server report</button></div>
+      </div>
+      <div id="serverBreach" class="breach hidden"></div>
+      <div id="serverSafe" class="safe-note hidden"></div>
+      <div id="serverReq" class="reqinfo"></div>
+      <div id="serverOut"></div>
+    </section>
+
+    <!-- ───────── DATABASE TAB · Module ② (least privilege) ───────── -->
+    <section id="tab-database" class="hidden">
+      <h1>Database privilege</h1>
+      <p class="sub">Module ② — an attacker with a foothold pivots to <code>internal_users</code>
+        (admin credential hashes), a table the policy service never needs. Whether it succeeds is
+        decided by the app's DB login: v1 is a member of <b>db_owner</b>, v2 is least-privilege.</p>
+      <div class="filter">
+        <div class="lead">Pivot from the policy service to a table outside its schema</div>
+        <div class="controls"><button class="btn danger" id="dbRun">⛏️ Dump internal_users</button></div>
+      </div>
+      <div id="dbBreach" class="breach hidden"></div>
+      <div id="dbSafe" class="safe-note hidden"></div>
+      <div id="dbReq" class="reqinfo"></div>
+      <div id="dbOut"></div>
+    </section>
+
+    <!-- ───────── SECRETS TAB · Module ③ (Key Vault) ───────── -->
+    <section id="tab-secrets" class="hidden">
+      <h1>Application secrets</h1>
+      <p class="sub">Module ③ — where does the database connection string live? v1 reads it from a
+        hardcoded, committed <code>appsettings.json</code>; v2 holds only a Key Vault reference and
+        resolves the value at runtime.</p>
+      <div class="filter">
+        <div class="lead">Read the application's effective configuration</div>
+        <div class="controls"><button class="btn go" id="secretsRun">Read config</button></div>
+      </div>
+      <div id="secretsBreach" class="breach hidden"></div>
+      <div id="secretsSafe" class="safe-note hidden"></div>
+      <div id="secretsReq" class="reqinfo"></div>
+      <div id="secretsOut"></div>
+    </section>
+
+    <!-- ───────── DOCUMENTS TAB · Module ④ (SSRF → IMDS → Key Vault) ───────── -->
+    <section id="tab-ssrf" class="hidden">
+      <h1>Import a document from a URL</h1>
+      <p class="sub">Module ④ — the portal fetches a document from a URL you supply. v1 fetches
+        anything (SSRF); v2 allow-lists the host and blocks internal/link-local addresses. The
+        ☠️ chip points the fetcher at the cloud metadata endpoint.</p>
+      <div class="filter">
+        <div class="lead">Document URL</div>
+        <div class="controls">
+          <input id="ssrfUrl" value="https://docs.certify-insurer.com/policy/CERT-2026-1001.pdf" />
+          <button class="btn go" id="ssrfFetch">Fetch</button>
+        </div>
+        <div class="chips">
+          <span class="chip" data-url="https://docs.certify-insurer.com/policy/CERT-2026-1001.pdf">📄 legit policy doc</span>
+          <span class="chip evil" data-url="http://169.254.169.254/metadata/identity/oauth2/token?api-version=2021-02-01&amp;resource=https://vault.azure.net">☠️ SSRF: Azure IMDS token</span>
+        </div>
+      </div>
+      <div id="ssrfBreach" class="breach hidden"></div>
+      <div id="ssrfSafe" class="safe-note hidden"></div>
+      <div id="ssrfReq" class="reqinfo"></div>
+      <div id="ssrfOut"></div>
+      <div id="ssrfChain"></div>
+    </section>
   </main>
 
   <footer>© 2026 Certify Insurance Ltd. · Demo environment for the ToDo Security Solutions Secure SDLC workshop. Not a real insurer.</footer>
@@ -243,27 +317,32 @@
     refreshActive();
   });
 
+  const TABS = ['policies','claims','import','server','database','secrets','ssrf'];
+  const NAV  = { policies:'navPolicies', claims:'navClaims', import:'navImport',
+                 server:'navServer', database:'navDatabase', secrets:'navSecrets', ssrf:'navSsrf' };
   function showTab(tab){
     state.tab = tab;
-    ['policies','claims','import'].forEach(t => $('#tab-'+t).classList.toggle('hidden', t !== tab));
-    $('#navPolicies').classList.toggle('active', tab === 'policies');
-    $('#navClaims').classList.toggle('active', tab === 'claims');
-    $('#navImport').classList.toggle('active', tab === 'import');
+    TABS.forEach(t => $('#tab-'+t).classList.toggle('hidden', t !== tab));
+    Object.entries(NAV).forEach(([t,id]) => $('#'+id).classList.toggle('active', t === tab));
     refreshActive();
   }
-  $('#navPolicies').addEventListener('click', () => showTab('policies'));
-  $('#navClaims').addEventListener('click', () => showTab('claims'));
-  $('#navImport').addEventListener('click', () => showTab('import'));
+  Object.entries(NAV).forEach(([t,id]) => $('#'+id).addEventListener('click', () => showTab(t)));
   function refreshActive(){
-    if (state.tab === 'claims') loadClaims();
-    else if (state.tab === 'import') updatePayloadPreview();
-    else runPolicies();
+    switch (state.tab){
+      case 'claims':   return loadClaims();
+      case 'import':   return updatePayloadPreview();
+      case 'server':   return runServer();
+      case 'database': return runDatabase();
+      case 'secrets':  return runSecrets();
+      case 'ssrf':     return;            // manual — user clicks Fetch
+      default:         return runPolicies();
+    }
   }
 
   // ── POLICIES (HQL injection) ─────────────────────────────
   $('#search').addEventListener('click', () => { state.type = $('#type').value; runPolicies(); });
   $('#type').addEventListener('keydown', e => { if (e.key === 'Enter'){ state.type = $('#type').value; runPolicies(); } });
-  document.querySelectorAll('.chip').forEach(c =>
+  document.querySelectorAll('#tab-policies .chip').forEach(c =>
     c.addEventListener('click', () => { state.type = c.dataset.type; $('#type').value = c.dataset.type; runPolicies(); }));
 
   async function runPolicies(){
@@ -399,6 +478,126 @@
         : 'No command output — load the 💣 RCE payload and run it on the Vulnerable (v1) endpoint to see code execution.';
       $('#importOut').innerHTML = data.draft ? `<div class="outbox">${escapeHtml(typeof data.draft === 'string' ? data.draft : JSON.stringify(data.draft, null, 2))}</div>` : '';
     }
+  }
+
+  // ── SERVER (Module ①) ────────────────────────────────────
+  $('#serverRun').addEventListener('click', runServer);
+  async function runServer(){
+    const url = `/api/${state.mode}/server/report`, mc = state.mode;
+    let res, data;
+    try { res = await fetch(url); data = await res.json(); }
+    catch(err){ $('#serverOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+    const h = n => res.headers.get(n) || '(absent)';
+    const breach = $('#serverBreach'), safe = $('#serverSafe');
+    breach.classList.add('hidden'); safe.classList.add('hidden');
+    $('#serverReq').innerHTML =
+      `<span class="m">GET</span> <span class="${mc}">${escapeHtml(url)}</span> · HTTP ${res.status}<br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint)}`;
+    const row = (n,leak) => `<tr class="${leak?'foreign':''}"><td><code>${n}</code></td><td><code>${escapeHtml(h(n))}</code></td></tr>`;
+    const table = `<table><thead><tr><th>Response header</th><th>Value</th></tr></thead><tbody>` +
+      row('Server', h('Server')!=='(absent)') + row('X-Powered-By', h('X-Powered-By')!=='(absent)') +
+      row('Strict-Transport-Security') + row('Content-Security-Policy') + row('X-Content-Type-Options') +
+      `</tbody></table>`;
+    if (data.leakedConnectionString){
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>INFORMATION DISCLOSURE</b> — the production error leaked the stack trace, the framework version, and the <b>database connection string</b>.`;
+      $('#serverOut').innerHTML = `<div class="outbox">${escapeHtml(data.exception)}\n${escapeHtml(data.stackTrace)}\n\nConnectionString: ${escapeHtml(data.leakedConnectionString)}</div>` + table;
+    } else {
+      safe.classList.remove('hidden');
+      safe.textContent = '✅ Generic error — no stack trace or connection string, server/framework banners removed, security headers present.';
+      $('#serverOut').innerHTML = `<div class="outbox">${escapeHtml(JSON.stringify({ title:data.title, status:data.status, traceId:data.traceId }, null, 2))}</div>` + table;
+    }
+  }
+
+  // ── DATABASE (Module ②) ──────────────────────────────────
+  $('#dbRun').addEventListener('click', runDatabase);
+  async function runDatabase(){
+    const url = `/api/${state.mode}/db/internal-users`, mc = state.mode;
+    let data;
+    try { data = await (await fetch(url)).json(); }
+    catch(err){ $('#dbOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+    const breach = $('#dbBreach'), safe = $('#dbSafe');
+    breach.classList.add('hidden'); safe.classList.add('hidden');
+    $('#dbReq').innerHTML =
+      `<span class="m">GET</span> <span class="${mc}">${escapeHtml(url)}</span><br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint)} · grant: <b>${escapeHtml(data.effectiveGrant)}</b>`;
+    if (data.reachedForeignTable && (data.users||[]).length){
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>BLAST RADIUS</b> — the policy-service login read <b>${data.rowCount}</b> rows from <code>internal_users</code>, a table it never needs. Admin credential hashes are exposed.`;
+      $('#dbOut').innerHTML =
+        `<table><thead><tr><th>Username</th><th>Role</th><th>MFA</th><th>Password hash</th></tr></thead><tbody>` +
+        data.users.map(u => `<tr class="foreign"><td><b>${escapeHtml(u.username)}</b></td><td>${escapeHtml(u.role)}</td><td>${escapeHtml(u.mfa)}</td><td><code>${escapeHtml(u.passwordHash)}</code></td></tr>`).join('') +
+        `</tbody></table>`;
+    } else {
+      safe.classList.remove('hidden');
+      safe.textContent = '✅ Least privilege held — the scoped login cannot read internal_users.';
+      $('#dbOut').innerHTML = `<div class="outbox">${escapeHtml(data.error || 'permission denied')}</div>`;
+    }
+  }
+
+  // ── SECRETS (Module ③) ───────────────────────────────────
+  $('#secretsRun').addEventListener('click', runSecrets);
+  async function runSecrets(){
+    const url = `/api/${state.mode}/secrets/config`, mc = state.mode;
+    let data;
+    try { data = await (await fetch(url)).json(); }
+    catch(err){ $('#secretsOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+    const breach = $('#secretsBreach'), safe = $('#secretsSafe');
+    breach.classList.add('hidden'); safe.classList.add('hidden');
+    $('#secretsReq').innerHTML =
+      `<span class="m">GET</span> <span class="${mc}">${escapeHtml(url)}</span><br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint)} · source: <b>${escapeHtml(data.source)}</b>`;
+    if (data.inGitHistory){
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>SECRET IN THE REPO</b> — the database password sits in committed <code>appsettings.json</code>. ${escapeHtml(data.note)}`;
+      $('#secretsOut').innerHTML = `<div class="outbox">appsettings.json →\n"ConnectionStrings:Certify": "${escapeHtml(data.connectionString)}"</div>`;
+    } else {
+      safe.classList.remove('hidden');
+      safe.textContent = '✅ Vault-backed — appsettings holds only a reference; the value is fetched at runtime and masked here.';
+      $('#secretsOut').innerHTML = `<div class="outbox">appsettings.json →\n"ConnectionStrings:Certify": "${escapeHtml(data.appsettingsShows)}"\n\nresolved (masked): ${escapeHtml(data.connectionString)}</div>`;
+    }
+  }
+
+  // ── DOCUMENTS / SSRF (Module ④) ──────────────────────────
+  document.querySelectorAll('#tab-ssrf .chip').forEach(c =>
+    c.addEventListener('click', () => { $('#ssrfUrl').value = c.dataset.url; }));
+  $('#ssrfFetch').addEventListener('click', fetchDoc);
+  async function fetchDoc(){
+    const url = $('#ssrfUrl').value, ep = `/api/${state.mode}/documents/fetch`, mc = state.mode;
+    let data;
+    try { data = await (await fetch(ep, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ url }) })).json(); }
+    catch(err){ $('#ssrfOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
+    const breach = $('#ssrfBreach'), safe = $('#ssrfSafe');
+    breach.classList.add('hidden'); safe.classList.add('hidden'); $('#ssrfChain').innerHTML = '';
+    $('#ssrfReq').innerHTML =
+      `<span class="m">POST</span> <span class="${mc}">${escapeHtml(ep)}</span> · url=${escapeHtml(url)}<br>` +
+      `<span class="m">↳</span> ${escapeHtml(data.endpoint)}`;
+
+    if (data.blocked){
+      safe.classList.remove('hidden');
+      safe.innerHTML = `✅ <b>SSRF blocked</b> — ${escapeHtml(data.reason)}.`;
+      $('#ssrfOut').innerHTML = ''; return;
+    }
+    if (!data.reachedInternal){
+      $('#ssrfOut').innerHTML = `<div class="outbox">${escapeHtml(data.body || '')}</div>`;
+      if (state.mode === 'v2'){ safe.classList.remove('hidden'); safe.textContent = '✅ Allowed host fetched — validation passed for an allow-listed document.'; }
+      return;
+    }
+    // v1 + internal: SSRF reached the metadata endpoint → chain to Key Vault
+    breach.classList.remove('hidden');
+    breach.innerHTML = `🚨 <b>SSRF → CLOUD METADATA</b> — the server fetched the link-local metadata endpoint and returned its Managed Identity token.`;
+    let token = ''; try { token = JSON.parse(data.body).access_token; } catch {}
+    let kv; try { kv = await (await fetch('/api/attack/keyvault', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token }) })).json(); } catch { kv = { ok:false }; }
+    const tokShort = token ? token.slice(0,28) + '…' : '(none)';
+    $('#ssrfOut').innerHTML = `<div class="outbox">${escapeHtml(data.body)}</div>`;
+    $('#ssrfChain').innerHTML =
+      `<div class="breach" style="margin-top:14px"><b>Attack chain complete</b>` +
+      `<ol style="margin:8px 0 0 18px;line-height:1.7">` +
+      `<li>SSRF → <code>169.254.169.254</code> metadata endpoint ✔</li>` +
+      `<li>Stole Managed Identity token: <code>${escapeHtml(tokShort)}</code> ✔</li>` +
+      `<li>Token → Key Vault <code>${escapeHtml(kv.secretUri || '')}</code> ${kv.ok ? '✔' : '✗'}</li>` +
+      `<li>Retrieved DB credentials: <code>${escapeHtml(kv.connectionString || '(failed)')}</code> 🩸</li>` +
+      `</ol></div>`;
   }
 
   // initial load
