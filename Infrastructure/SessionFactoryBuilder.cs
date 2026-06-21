@@ -50,7 +50,35 @@ public static class SessionFactoryBuilder
             s.CreateSQLQuery("PRAGMA journal_mode=WAL").UniqueResult();
 
         Seed(factory);
+        SeedInternalUsers(factory);
         return factory;
+    }
+
+    /// <summary>
+    /// Module ② — a sensitive table OUTSIDE the app's domain model (admin credential
+    /// hashes). Created with raw SQL because the application's entities never map it;
+    /// only an over-privileged (db_owner) login should be able to reach it.
+    /// </summary>
+    private static void SeedInternalUsers(ISessionFactory factory)
+    {
+        using var session = factory.OpenSession();
+        var conn = session.Connection;   // raw ADO — robust for DDL on SQLite
+
+        void Exec(string sql)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
+
+        Exec(@"CREATE TABLE internal_users (
+                 id INTEGER PRIMARY KEY,
+                 username TEXT, password_hash TEXT, role TEXT, mfa TEXT)");
+
+        Exec(@"INSERT INTO internal_users (username, password_hash, role, mfa) VALUES
+                 ('dba_admin',  '$2a$12$Kx9hq1Qe7r3uVbN2sLf0Oe8wZc5pYt1aR4mB6nD8gH0jK2lM4oPq', 'db_owner',  'disabled'),
+                 ('svc_backup', '$2a$12$Qp7rT2yU4iO6pA8sD0fG1He3jK5lZ7xC9vB1nM3qW5eR7tY9uI1o', 'sysadmin',  'disabled'),
+                 ('helpdesk',   '$2a$12$Zr2sE4tY6uI8oP0aS2dF3gH5jK7lX9cV1bN3mQ5wE7rT9yU1iO3p', 'operator',  'enabled')");
     }
 
     private static void Seed(ISessionFactory factory)
