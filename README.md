@@ -298,19 +298,32 @@ curl -i http://localhost:8088/api/v2/server/report   # ✅ generic ProblemDetail
 
 Code: the `/server/report` endpoints in `Program.cs` + `builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false)`.
 
-## ② Database least privilege — db_owner vs scoped login
+## ② Database least privilege — normal request vs the same request, abused
 
-The policy service has a foothold and pivots to `internal_users` (admin credential hashes), a table it never
-needs. Whether it succeeds depends only on the **DB login's privilege**.
+**Claims lookup** is a normal internal staff tool: search claims by claimant name. A normal search is
+harmless — but the search term is concatenated into SQL, so an attacker can **UNION-inject** it to read
+`internal_users` (admin password hashes). Whether that pivot *succeeds* is decided only by the **DB login's
+privilege**.
 
-**Portal:** **Database** tab → **⛏️ Dump internal_users**. ❌v1 (db_owner) returns the hashes; ✅v2 (scoped) is denied.
+**Portal:** **Database** tab.
+1. **Normal request** — type `Cohen` → *Search* → you get Dana Cohen's claims (try the Cohen / Levi / Friedman chips).
+2. **The abuse** — click the **💉 dump internal_users** chip → *Search*. On **❌ v1** (db_owner) the injected
+   `UNION` pulls admin credential hashes into the claims result (rows flagged red). Flip to **✅ v2**
+   (least privilege) and the same injection is **denied on `internal_users`**.
 
 ```bash
-curl -s http://localhost:8088/api/v1/db/internal-users   # ❌ db_owner -> admin password hashes
-curl -s http://localhost:8088/api/v2/db/internal-users   # ✅ least privilege -> permission denied
+# 1) normal lookup
+curl -s "http://localhost:8088/api/v1/db/claims-search?q=Cohen"
+
+# 2) the SAME endpoint, UNION-injected to dump internal_users
+curl -s "http://localhost:8088/api/v1/db/claims-search?q=%25%27%20UNION%20SELECT%20username%2C%20password_hash%2C%20role%2C%20mfa%20FROM%20internal_users%20--"   # db_owner  -> hashes
+curl -s "http://localhost:8088/api/v2/db/claims-search?q=%25%27%20UNION%20SELECT%20username%2C%20password_hash%2C%20role%2C%20mfa%20FROM%20internal_users%20--"   # scoped    -> denied
 ```
 
-Code: `Infrastructure/AdminRepository.cs`; the sensitive table is seeded in `SessionFactoryBuilder.cs`.
+> The search is genuinely injectable — the *injection* fix is parameterization (Session 4). This module's
+> lesson is that **least privilege contains the damage**: same bug, different blast radius.
+
+Code: `Infrastructure/AdminRepository.cs` (`claims-search` query + scope check); `internal_users` seeded in `SessionFactoryBuilder.cs`.
 
 ## ③ Secrets — committed appsettings.json vs Key Vault
 
@@ -415,7 +428,7 @@ CertifyLab/
 │  ├─ MicrosoftDataSqliteDriver.cs    # NHibernate driver for Microsoft.Data.Sqlite
 │  ├─ PolicyRepository.cs             # ❌/✅ HQL injection
 │  ├─ ClaimRepository.cs              # ❌/✅ race condition  (TOCTOU)
-│  ├─ AdminRepository.cs              # ❌/✅ DB least privilege (internal_users)   [S5 ②]
+│  ├─ AdminRepository.cs              # ❌/✅ claims lookup, UNION-injected to internal_users  [S5 ②]
 │  ├─ LabSecrets.cs                   # shared fake connection string / MI token    [S5]
 │  └─ MockAzure.cs                    # mock IMDS + Key Vault + SSRF URL validation  [S5 ④]
 ├─ appsettings.json                   # deliberately-committed secret               [S5 ③]
