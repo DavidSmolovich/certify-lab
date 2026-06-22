@@ -3,48 +3,68 @@ using NHibernate;
 namespace CertifyLab.Infrastructure;
 
 /// <summary>
-/// Module ② — Database least privilege.
+/// Module ② — Database least privilege, shown through a *legitimate* feature.
 ///
-/// `internal_users` is a sensitive table OUTSIDE the application's domain model
-/// (admin credential hashes). The application never needs it. Two reads of the
-/// same table model the same query running under two different SQL Server logins:
-///   ❌ a login that is a member of db_owner  → reaches the whole database,
-///   ✅ a login scoped to the app's own tables → permission denied.
+/// "Claims lookup" is a normal internal staff tool: search claims by claimant name.
+/// The search term is concatenated into the SQL (an injection bug — the real fix is
+/// parameterization, Session 4). This module's point is different: when an attacker
+/// UNION-injects to read `internal_users` (admin password hashes), whether it SUCCEEDS
+/// is decided only by the privilege of the application's DB login:
+///   ❌ db_owner        → the cross-table read succeeds (full compromise),
+///   ✅ least privilege  → the same injection is denied on `internal_users`.
 ///
-/// SQLite has no role engine, so the scope check is enforced in the repository to
-/// model the GRANT/DENY you would configure on SQL Server (see the Module ② slides).
+/// SQLite has no role engine, so the scoped login's DENY is modelled here in the
+/// repository (see the Module ② slides). Same bug, different blast radius.
 /// </summary>
 public class AdminRepository
 {
     private readonly ISessionFactory _factory;
     public AdminRepository(ISessionFactory factory) => _factory = factory;
 
-    public record LeakedUser(string Username, string PasswordHash, string Role, string Mfa);
+    // Display headers for the claims-lookup result grid.
+    public static readonly string[] Columns = { "Claim #", "Claimant", "Description", "Amount" };
 
-    // The only tables the application's own login is granted.
-    private static readonly HashSet<string> AppSchemaTables =
-        new(StringComparer.OrdinalIgnoreCase) { "Policy", "Claim", "Payout" };
+    public record SearchResult(string Sql, IList<string[]> Rows, bool ReachedInternalUsers, bool Denied, string Error);
 
-    // ❌ db_owner — one foothold reads admin password hashes, the audit log, everything.
-    public IList<LeakedUser> DumpInternalUsersVulnerable()
+    // The legitimate query — IDENTICAL in both builds; only the DB login's privilege differs.
+    private static string BuildSql(string nameFilter) =>
+        "SELECT ClaimNumber, CustomerName, Description, Amount " +
+        "FROM Claims WHERE CustomerName LIKE '%" + nameFilter + "%'";
+
+    // Tables the application's own login is granted. Anything else => no SELECT grant.
+    private static bool TouchesForbiddenTable(string sql) =>
+        sql.ToLowerInvariant().Contains("internal_users");
+
+    // ❌ db_owner — runs whatever the query became, across the whole database.
+    public SearchResult SearchClaimsVulnerable(string nameFilter)
     {
-        using var session = _factory.OpenSession();
-        return session
-            .CreateSQLQuery("SELECT username, password_hash, role, mfa FROM internal_users")
-            .List<object[]>()
-            .Select(r => new LeakedUser((string)r[0], (string)r[1], (string)r[2], (string)r[3]))
-            .ToList();
+        var sql = BuildSql(nameFilter);
+        try
+        {
+            return new SearchResult(sql, Exec(sql), TouchesForbiddenTable(sql), false, null);
+        }
+        catch (Exception ex) { return new SearchResult(sql, null, false, false, ex.Message); }
     }
 
-    // ✅ Least privilege — the scoped login may only touch the app's own tables.
-    public (bool allowed, string error, IList<LeakedUser> rows) ReadTableScoped(string table)
+    // ✅ Least privilege — the scoped login is denied any table outside its grant.
+    public SearchResult SearchClaimsScoped(string nameFilter)
     {
-        if (!AppSchemaTables.Contains(table))
-            return (false,
-                $"SELECT permission denied on object '{table}' — login 'svc_certify_app' is granted only the Policies schema (no db_owner).",
-                null);
+        var sql = BuildSql(nameFilter);
+        if (TouchesForbiddenTable(sql))
+            return new SearchResult(sql, null, false, true,
+                "SELECT permission denied on object 'internal_users' — login 'svc_certify_app' is granted only the Policies schema (no db_owner).");
+        try
+        {
+            return new SearchResult(sql, Exec(sql), false, false, null);
+        }
+        catch (Exception ex) { return new SearchResult(sql, null, false, false, ex.Message); }
+    }
 
-        // (App tables would be returned here; not needed for the demo.)
-        return (true, null, new List<LeakedUser>());
+    private IList<string[]> Exec(string sql)
+    {
+        using var session = _factory.OpenSession();
+        return session.CreateSQLQuery(sql).List<object[]>()
+            .Select(r => r.Select(c => c?.ToString() ?? "").ToArray())
+            .ToList();
     }
 }

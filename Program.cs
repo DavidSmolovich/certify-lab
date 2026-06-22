@@ -209,32 +209,36 @@ app.MapGet("/api/v2/server/report", (HttpResponse res) =>
     }, statusCode: StatusCodes.Status500InternalServerError);
 });
 
-// ── ② Database least privilege — db_owner reaches internal_users  vs  scoped ──
-app.MapGet("/api/v1/db/internal-users", (AdminRepository admin) =>
+// ── ② Database least privilege — claims lookup, UNION-injected to internal_users ──
+app.MapGet("/api/v1/db/claims-search", (HttpRequest req, AdminRepository admin) =>
 {
-    var rows = admin.DumpInternalUsersVulnerable();
+    var r = admin.SearchClaimsVulnerable(req.Query["q"].ToString());
     return Results.Json(new
     {
         endpoint = "VULNERABLE — app login is a member of db_owner",
         effectiveGrant = "db_owner (entire database)",
-        table = "internal_users",
-        reachedForeignTable = true,
-        rowCount = rows.Count,
-        users = rows
+        executedSql = r.Sql,
+        columns = AdminRepository.Columns,
+        rowCount = r.Rows?.Count ?? 0,
+        reachedInternalUsers = r.ReachedInternalUsers,
+        error = r.Error,
+        rows = r.Rows
     });
 });
 
-app.MapGet("/api/v2/db/internal-users", (AdminRepository admin) =>
+app.MapGet("/api/v2/db/claims-search", (HttpRequest req, AdminRepository admin) =>
 {
-    var (allowed, error, _) = admin.ReadTableScoped("internal_users");
+    var r = admin.SearchClaimsScoped(req.Query["q"].ToString());
     return Results.Json(new
     {
         endpoint = "SECURE — least-privilege login (Policies schema only)",
-        effectiveGrant = "GRANT SELECT/INSERT/UPDATE ON SCHEMA::Policies",
-        table = "internal_users",
-        reachedForeignTable = allowed,
-        error,
-        users = Array.Empty<object>()
+        effectiveGrant = "GRANT SELECT ON SCHEMA::Policies",
+        executedSql = r.Sql,
+        columns = AdminRepository.Columns,
+        rowCount = r.Rows?.Count ?? 0,
+        denied = r.Denied,
+        error = r.Error,
+        rows = r.Rows
     });
 });
 

@@ -234,13 +234,23 @@
 
     <!-- ───────── DATABASE TAB · Module ② (least privilege) ───────── -->
     <section id="tab-database" class="hidden">
-      <h1>Database privilege</h1>
-      <p class="sub">Module ② — an attacker with a foothold pivots to <code>internal_users</code>
-        (admin credential hashes), a table the policy service never needs. Whether it succeeds is
-        decided by the app's DB login: v1 is a member of <b>db_owner</b>, v2 is least-privilege.</p>
+      <h1>Claims lookup</h1>
+      <p class="sub">Module ② — an internal staff tool: search claims by claimant name. A normal search is
+        harmless, but the same box can be <b>UNION-injected</b> to read <code>internal_users</code> (admin
+        password hashes). Whether that pivot succeeds is decided by the DB login — v1 is <b>db_owner</b>,
+        v2 is least-privilege.</p>
       <div class="filter">
-        <div class="lead">Pivot from the policy service to a table outside its schema</div>
-        <div class="controls"><button class="btn danger" id="dbRun">⛏️ Dump internal_users</button></div>
+        <div class="lead">Search claims by claimant name</div>
+        <div class="controls">
+          <input id="dbQuery" value="Cohen" placeholder="e.g. Cohen, Levi, Friedman" />
+          <button class="btn go" id="dbRun">Search</button>
+        </div>
+        <div class="chips">
+          <span class="chip" data-q="Cohen">Cohen</span>
+          <span class="chip" data-q="Levi">Levi</span>
+          <span class="chip" data-q="Friedman">Friedman</span>
+          <span class="chip evil" data-q="%' UNION SELECT username, password_hash, role, mfa FROM internal_users --">💉 dump internal_users</span>
+        </div>
       </div>
       <div id="dbBreach" class="breach hidden"></div>
       <div id="dbSafe" class="safe-note hidden"></div>
@@ -509,30 +519,52 @@
     }
   }
 
-  // ── DATABASE (Module ②) ──────────────────────────────────
+  // ── DATABASE (Module ②) — claims lookup, UNION-injected to dump internal_users ──
   $('#dbRun').addEventListener('click', runDatabase);
+  $('#dbQuery').addEventListener('keydown', e => { if (e.key === 'Enter') runDatabase(); });
+  document.querySelectorAll('#tab-database .chip').forEach(c =>
+    c.addEventListener('click', () => { $('#dbQuery').value = c.dataset.q; runDatabase(); }));
+
   async function runDatabase(){
-    const url = `/api/${state.mode}/db/internal-users`, mc = state.mode;
+    const q = $('#dbQuery').value;
+    const url = `/api/${state.mode}/db/claims-search?` + new URLSearchParams({ q });
+    const mc = state.mode;
     let data;
     try { data = await (await fetch(url)).json(); }
     catch(err){ $('#dbOut').innerHTML = `<div class="empty">Request failed: ${err}</div>`; return; }
     const breach = $('#dbBreach'), safe = $('#dbSafe');
     breach.classList.add('hidden'); safe.classList.add('hidden');
     $('#dbReq').innerHTML =
-      `<span class="m">GET</span> <span class="${mc}">${escapeHtml(url)}</span><br>` +
-      `<span class="m">↳</span> ${escapeHtml(data.endpoint)} · grant: <b>${escapeHtml(data.effectiveGrant)}</b>`;
-    if (data.reachedForeignTable && (data.users||[]).length){
-      breach.classList.remove('hidden');
-      breach.innerHTML = `🚨 <b>BLAST RADIUS</b> — the policy-service login read <b>${data.rowCount}</b> rows from <code>internal_users</code>, a table it never needs. Admin credential hashes are exposed.`;
-      $('#dbOut').innerHTML =
-        `<table><thead><tr><th>Username</th><th>Role</th><th>MFA</th><th>Password hash</th></tr></thead><tbody>` +
-        data.users.map(u => `<tr class="foreign"><td><b>${escapeHtml(u.username)}</b></td><td>${escapeHtml(u.role)}</td><td>${escapeHtml(u.mfa)}</td><td><code>${escapeHtml(u.passwordHash)}</code></td></tr>`).join('') +
-        `</tbody></table>`;
-    } else {
+      `<span class="m">GET</span> <span class="${mc}">/api/${mc}/db/claims-search?q=${escapeHtml(q)}</span> · login: <b>${escapeHtml(data.effectiveGrant||'')}</b><br>` +
+      `<span class="m">SQL</span> ${escapeHtml(data.executedSql || '')}`;
+
+    if (data.denied){
       safe.classList.remove('hidden');
-      safe.textContent = '✅ Least privilege held — the scoped login cannot read internal_users.';
-      $('#dbOut').innerHTML = `<div class="outbox">${escapeHtml(data.error || 'permission denied')}</div>`;
+      safe.innerHTML = `✅ <b>Least privilege held</b> — ${escapeHtml(data.error)}<br>The injection still formed, but the scoped login has no grant on admin tables.`;
+      $('#dbOut').innerHTML = '';
+      return;
     }
+    if (data.error){
+      $('#dbOut').innerHTML = `<div class="outbox">SQL error: ${escapeHtml(data.error)}</div>`;
+      return;
+    }
+    const rows = data.rows || [];
+    const isLeak = r => r.some(c => /^\$2[aby]\$/.test(c));   // a bcrypt hash => row came from internal_users
+    const leaked = rows.filter(isLeak).length;
+    if (leaked){
+      breach.classList.remove('hidden');
+      breach.innerHTML = `🚨 <b>BLAST RADIUS</b> — the injected UNION pulled <b>${leaked}</b> rows from <code>internal_users</code> into a claims search. Admin credential hashes are now in the response.`;
+    }
+    if (!rows.length){ $('#dbOut').innerHTML = `<div class="empty">No claims match “${escapeHtml(q)}”.</div>`; return; }
+    $('#dbOut').innerHTML =
+      `<table><thead><tr>${(data.columns||[]).map(c=>`<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>` +
+      rows.map(r => {
+        const leak = isLeak(r);
+        return `<tr class="${leak?'foreign':''}">` +
+          r.map((c,i)=>`<td>${escapeHtml(c)}${leak&&i===0?' <span class="badge-foreign">internal_users</span>':''}</td>`).join('') +
+          `</tr>`;
+      }).join('') +
+      `</tbody></table>`;
   }
 
   // ── SECRETS (Module ③) ───────────────────────────────────
